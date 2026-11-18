@@ -38,6 +38,8 @@ class GocardlessItem::Importer
       import_account_data(gocardless_account, credentials)
     end
 
+    gocardless_item.disambiguate_account_names!
+
     # Update raw payload on the item
     gocardless_item.upsert_gocardless_snapshot!(stats)
   rescue Provider::Gocardless::AuthenticationError => e

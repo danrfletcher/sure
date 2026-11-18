@@ -175,6 +175,15 @@ class GocardlessItem < ApplicationRecord
 
   # Bank consents last 90 days; the provider shows how long is left so the user
   # can re-link before the feed stops.
+  # Banks such as Revolut name every currency pocket after the owner. Where names
+  # collide within this bank, tell them apart by currency so the setup screen is usable.
+  def disambiguate_account_names!
+    gocardless_accounts.group_by(&:name).each_value do |same|
+      next if same.size < 2
+      same.each { |a| a.update!(name: "#{a.name} (#{a.currency})") }
+    end
+  end
+
   def consent_expired?
     consent_expires_at.present? && consent_expires_at <= Time.current
   end

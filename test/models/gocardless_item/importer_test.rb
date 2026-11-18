@@ -120,4 +120,14 @@ class GocardlessItem::ImporterTest < ActiveSupport::TestCase
       ENV.delete("GOCARDLESS_RAW_DIR")
     end
   end
+
+  test "accounts that share a name are told apart by currency" do
+    @provider.stubs(:requisition).returns(status: "LN", accounts: [ "a1", "a2" ])
+    @provider.stubs(:account_details).with("a1").returns(account: { name: "Daniel Fletcher", currency: "GBP" })
+    @provider.stubs(:account_details).with("a2").returns(account: { name: "Daniel Fletcher", currency: "EUR" })
+    @provider.stubs(:account_balances).returns(balances: [])
+    import!
+
+    assert_equal [ "Daniel Fletcher (EUR)", "Daniel Fletcher (GBP)" ], @item.gocardless_accounts.pluck(:name).sort
+  end
 end
