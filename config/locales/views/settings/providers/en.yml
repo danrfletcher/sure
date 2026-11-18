@@ -70,6 +70,7 @@ en:
         financekit: Sync (some) FinanceKit accounts through the Sure iOS app.
         akahu: Sync New Zealand financial institutions via Akahu.
         simplefin: Connect US bank accounts via the open SimpleFIN protocol.
+        gocardless: Sync UK bank accounts through your own GoCardless Bank Account Data credentials.
         lunchflow: Connect 20k+ banks from 40+ countries (UK, EU, USA and more!)
         redbark: Sync Australian bank accounts via Redbark open banking.
         up: Sync Australian Up bank accounts with a personal access token.

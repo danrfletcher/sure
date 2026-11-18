@@ -184,6 +184,12 @@
       <% end %>
     <% end %>
 
+    <% if @gocardless_items.any? %>
+  <% @gocardless_items.sort_by(&:created_at).each do |item| %>
+    <%= render item, visible_accounts: visible_card_accounts(item) %>
+  <% end %>
+<% end %>
+
     <% if @manual_accounts.any? %>
       <div id="manual-accounts">
         <%= render "accounts/index/manual_accounts", accounts: @manual_accounts, reconciliation_indicators: @reconciliation_indicators %>
