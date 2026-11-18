@@ -220,7 +220,9 @@ class GocardlessItemsController < ApplicationController
   end
 
   def complete_account_setup
-    account_configs = params[:accounts] || {}
+    # The setup screen posts the ticked accounts as selected_accounts[]; richer clients
+    # may post an accounts hash with per-account type/subtype instead.
+    account_configs = params[:accounts].presence || selected_account_configs
 
     if account_configs.empty?
       redirect_to setup_accounts_gocardless_item_path(@gocardless_item), alert: t(".no_accounts")
@@ -263,6 +265,14 @@ class GocardlessItemsController < ApplicationController
   end
 
   private
+
+    # Ticked accounts become checking or savings accounts, following the bank's own label.
+    def selected_account_configs
+      Array(params[:selected_accounts]).index_with do |id|
+        bank_type = @gocardless_item.gocardless_accounts.find_by(id: id)&.account_type.to_s.downcase
+        { account_type: "depository", subtype: bank_type.include?("sv") || bank_type.include?("sav") ? "savings" : "checking" }
+      end
+    end
 
     def family_credentials
       existing = Current.family.gocardless_items.where.not(secret_id: [ nil, "" ]).first
@@ -314,7 +324,7 @@ class GocardlessItemsController < ApplicationController
       accountable_attrs = {}
 
       # Set subtype if the accountable supports it
-      if config[:subtype].present? && accountable_class.respond_to?(:subtypes)
+      if config[:subtype].present? && accountable_class.const_defined?(:SUBTYPES)
         accountable_attrs[:subtype] = config[:subtype]
       end
 
