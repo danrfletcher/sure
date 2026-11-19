@@ -1,5 +1,6 @@
 module Family::WalletFundingMatchable
   DEFAULT_WALLET_FUNDING_DAYS = 30
+  DEFAULT_WALLET_FUNDING_FX_TOLERANCE = 0.05
 
   # Opt-in (WALLET_FUNDING_ACCOUNTS=PayPal). A payment wallet such as PayPal pays the
   # merchant first, and the bank is charged for it afterwards. Sure then holds the same
@@ -14,9 +15,17 @@ module Family::WalletFundingMatchable
   # its own category. Bank payments with no wallet row, and wallet rows with no bank
   # payment, are left exactly as they are. The bank row records which wallet row it
   # matched, so a wallet row is never used twice.
-  def auto_match_wallet_funding!
+  #
+  # Second pass, for wallet rows in another currency (the bank charges its own conversion):
+  # a bank payment still unmatched is paired with a wallet row when the row's amount,
+  # converted at Sure's rate for the row's date, is within WALLET_FUNDING_FX_TOLERANCE
+  # (default 0.05) of the bank amount, inside the same window, and ONLY when that is the
+  # single wallet row that fits and no other unmatched bank payment fits it either.
+  #
+  # With dry_run: true nothing is written; returns the pairs as [bank_entry, wallet_entry, pass].
+  def auto_match_wallet_funding!(dry_run: false)
     wallet_names = ENV.fetch("WALLET_FUNDING_ACCOUNTS", "").split(",").map { |n| n.strip.downcase }.reject(&:blank?)
-    return 0 if wallet_names.empty?
+    return(dry_run ? [] : 0) if wallet_names.empty?
 
     patterns = ENV.fetch("WALLET_FUNDING_BANK_NAMES", "").split(",").map { |n| n.strip.downcase }.reject(&:blank?)
     patterns = wallet_names if patterns.empty?
@@ -24,7 +33,7 @@ module Family::WalletFundingMatchable
     window = DEFAULT_WALLET_FUNDING_DAYS if window.nil? || window.negative?
 
     wallets = accounts.where("LOWER(accounts.name) IN (?)", wallet_names).to_a
-    return 0 if wallets.empty?
+    return(dry_run ? [] : 0) if wallets.empty?
 
     wallet_ids = wallets.map(&:id)
     own = Entry.where(entryable_type: "Transaction", account_id: accounts.select(:id)).joins("INNER JOIN transactions ON transactions.id = entries.entryable_id")
@@ -42,7 +51,11 @@ module Family::WalletFundingMatchable
       .where(patterns.map { "LOWER(entries.name) LIKE ?" }.join(" OR "), *patterns.map { |p| "%#{p}%" })
       .order(:date, :created_at)
 
-    matched = 0
+    tolerance = Float(ENV.fetch("WALLET_FUNDING_FX_TOLERANCE", DEFAULT_WALLET_FUNDING_FX_TOLERANCE), exception: false)
+    tolerance = DEFAULT_WALLET_FUNDING_FX_TOLERANCE if tolerance.nil? || !tolerance.finite? || tolerance.negative?
+
+    pairs = []
+    unmatched = []
     bank_scope.each do |bank|
       wallet = wallet_rows.find do |w|
         !used.include?(w.id.to_s) &&
@@ -50,14 +63,40 @@ module Family::WalletFundingMatchable
           (w.amount - bank.amount).abs < 0.005 &&
           (0..window).cover?((bank.date - w.date).to_i)
       end
-      next unless wallet
-
-      used << wallet.id.to_s
-      transaction = bank.entryable
-      transaction.update!(kind: "funds_movement", extra: transaction.extra.merge("wallet_funding_entry_id" => wallet.id.to_s))
-      matched += 1
+      if wallet
+        used << wallet.id.to_s
+        pairs << [ bank, wallet, :same_amount ]
+      else
+        unmatched << bank
+      end
     end
 
-    matched
+    foreign = wallet_rows.reject { |w| used.include?(w.id.to_s) }
+    fits = lambda do |bank, w|
+      next false if w.currency == bank.currency || !(0..window).cover?((bank.date - w.date).to_i)
+
+      rate = ExchangeRate.find_or_fetch_rate(from: w.currency, to: bank.currency, date: w.date)&.rate
+      rate.present? && ((w.amount * rate) - bank.amount).abs <= bank.amount * tolerance
+    end
+
+    unmatched.each do |bank|
+      candidates = foreign.select { |w| fits.call(bank, w) }
+      next unless candidates.one?
+
+      wallet = candidates.first
+      next if unmatched.count { |other| other != bank && fits.call(other, wallet) } > 0
+
+      pairs << [ bank, wallet, :converted ]
+      foreign = foreign - [ wallet ]
+    end
+
+    return pairs if dry_run
+
+    pairs.each do |bank, wallet, _pass|
+      transaction = bank.entryable
+      transaction.update!(kind: "funds_movement", extra: transaction.extra.merge("wallet_funding_entry_id" => wallet.id.to_s))
+    end
+
+    pairs.size
   end
 end

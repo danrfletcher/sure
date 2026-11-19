@@ -80,4 +80,46 @@ class Family::WalletFundingMatchableTest < ActiveSupport::TestCase
 
     assert_equal "standard", kind_of(other_name)
   end
+
+  test "pairs a foreign-currency wallet row with a bank payment inside the tolerance" do
+    ExchangeRate.stubs(:find_or_fetch_rate).returns(stub(rate: 0.8))
+    spend = create_transaction(date: 4.days.ago.to_date, account: @wallet, amount: 100, name: "Shop", currency: "EUR")
+    bank = create_transaction(date: Date.current, account: @bank, amount: 81.5, name: "WALLETCO PAYMENT")
+
+    with_env_overrides(@on) { assert_equal 1, @family.auto_match_wallet_funding! }
+
+    assert_equal "funds_movement", kind_of(bank)
+    assert_equal "standard", kind_of(spend)
+  end
+
+  test "leaves a converted match alone when it is outside the tolerance" do
+    ExchangeRate.stubs(:find_or_fetch_rate).returns(stub(rate: 0.8))
+    create_transaction(date: 4.days.ago.to_date, account: @wallet, amount: 100, name: "Shop", currency: "EUR")
+    bank = create_transaction(date: Date.current, account: @bank, amount: 90, name: "WALLETCO PAYMENT")
+
+    with_env_overrides(@on) { assert_equal 0, @family.auto_match_wallet_funding! }
+
+    assert_equal "standard", kind_of(bank)
+  end
+
+  test "leaves a converted match alone when two wallet rows fit" do
+    ExchangeRate.stubs(:find_or_fetch_rate).returns(stub(rate: 0.8))
+    create_transaction(date: 4.days.ago.to_date, account: @wallet, amount: 100, name: "Shop A", currency: "EUR")
+    create_transaction(date: 3.days.ago.to_date, account: @wallet, amount: 101, name: "Shop B", currency: "EUR")
+    bank = create_transaction(date: Date.current, account: @bank, amount: 81, name: "WALLETCO PAYMENT")
+
+    with_env_overrides(@on) { assert_equal 0, @family.auto_match_wallet_funding! }
+
+    assert_equal "standard", kind_of(bank)
+  end
+
+  test "dry run reports pairs without changing anything" do
+    create_transaction(date: 5.days.ago.to_date, account: @wallet, amount: 12, name: "Shop")
+    bank = create_transaction(date: Date.current, account: @bank, amount: 12, name: "WALLETCO PAYMENT")
+
+    pairs = with_env_overrides(@on) { @family.auto_match_wallet_funding!(dry_run: true) }
+
+    assert_equal 1, pairs.size
+    assert_equal "standard", kind_of(bank)
+  end
 end
