@@ -77,9 +77,13 @@ class GocardlessAccount < ApplicationRecord
   # balance types; prefer the interim/closing booked balance over forecasts.
   BALANCE_PREFERENCE = %w[interimAvailable interimBooked closingBooked expected openingBooked].freeze
 
+  # Cards report "available" as the unused credit limit, which is not what is owed.
+  CARD_BALANCE_PREFERENCE = %w[interimBooked closingBooked expected information interimAvailable openingBooked].freeze
+
   def pick_balance(balances)
     list = Array(balances).map { |b| b.with_indifferent_access }
-    chosen = BALANCE_PREFERENCE.lazy.filter_map { |type| list.find { |b| b[:balanceType] == type } }.first || list.first
+    preference = account_type.to_s.casecmp?("card") ? CARD_BALANCE_PREFERENCE : BALANCE_PREFERENCE
+    chosen = preference.lazy.filter_map { |type| list.find { |b| b[:balanceType] == type } }.first || list.first
     parse_decimal(chosen&.dig(:balanceAmount, :amount))
   end
 

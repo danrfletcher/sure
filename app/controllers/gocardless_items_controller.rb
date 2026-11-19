@@ -266,10 +266,12 @@ class GocardlessItemsController < ApplicationController
 
   private
 
-    # Ticked accounts become checking or savings accounts, following the bank's own label.
+    # Ticked accounts become checking or savings accounts, or credit cards when the bank
+    # labels them as cards, following the bank's own label.
     def selected_account_configs
       Array(params[:selected_accounts]).index_with do |id|
         bank_type = @gocardless_item.gocardless_accounts.find_by(id: id)&.account_type.to_s.downcase
+        next({ account_type: "credit_card" }) if bank_type == "card"
         { account_type: "depository", subtype: bank_type.include?("sv") || bank_type.include?("sav") ? "savings" : "checking" }
       end
     end
