@@ -166,9 +166,51 @@ module Family::AutoTransferMatchable
     end
 
     sync_principal_only_loan_accounts(created_transfers)
+    auto_confirm_own_transfers!
+  end
+
+  # Opt-in (AUTO_CONFIRM_TRANSFERS=true). Pending matches never touch reports until
+  # confirmed, so the user's own movements between accounts count as income and spending
+  # until someone clicks. This confirms a pending match when it is plainly one of the
+  # household's own movements: same currency, different accounts, within
+  # AUTO_CONFIRM_TRANSFER_DAYS (default 2) and BOTH legs carry a payee name that is the
+  # family's own: a member's full name or a pattern in AUTO_CONFIRM_TRANSFER_NAMES
+  # (comma-separated, case-insensitive substrings). Anything else stays pending.
+  def auto_confirm_own_transfers!
+    return unless ActiveModel::Type::Boolean.new.cast(ENV["AUTO_CONFIRM_TRANSFERS"])
+
+    patterns = own_transfer_name_patterns
+    return if patterns.empty?
+
+    max_days = Integer(ENV.fetch("AUTO_CONFIRM_TRANSFER_DAYS", 2), exception: false) || 2
+    Transfer.pending
+      .joins(inflow_transaction: { entry: :account })
+      .where(accounts: { family_id: id })
+      .includes(inflow_transaction: :entry, outflow_transaction: :entry)
+      .find_each do |transfer|
+        inflow = transfer.inflow_transaction.entry
+        outflow = transfer.outflow_transaction.entry
+        next if inflow.account_id == outflow.account_id
+        next unless inflow.currency == outflow.currency
+        next if (inflow.date - outflow.date).abs > max_days
+        next unless [ inflow, outflow ].all? { |entry| own_transfer_name?(entry.name, patterns) }
+
+        transfer.confirm!
+      end
   end
 
   private
+    def own_transfer_name_patterns
+      member_names = users.map { |user| [ user.first_name, user.last_name ].compact_blank.join(" ") }
+      extra = ENV.fetch("AUTO_CONFIRM_TRANSFER_NAMES", "").split(",")
+      (member_names + extra).map { |name| name.to_s.squish.downcase }.reject { |name| name.length < 4 }.uniq
+    end
+
+    def own_transfer_name?(name, patterns)
+      text = name.to_s.squish.downcase
+      patterns.any? { |pattern| text.include?(pattern) }
+    end
+
     # A principal-only loan replays a linked transfer as principal. The balance
     # was materialized before this match existed, so re-sync from the transfer's
     # entry dates.
