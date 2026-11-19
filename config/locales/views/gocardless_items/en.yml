@@ -1,6 +1,13 @@
 ---
 en:
   gocardless_items:
+    relink_banner:
+      expiring:
+        zero: "%{bank} access expires today. Re-link it to keep syncing."
+        one: "%{bank} access expires in %{count} day. Re-link it to keep syncing."
+        other: "%{bank} access expires in %{count} days. Re-link it to keep syncing."
+      expired: "%{bank} access has expired, so it has stopped syncing. Re-link it to resume."
+      action: "Re-link"
     # Model method strings (i18n for item_model.rb)
     sync_status:
       no_accounts: "No accounts found"

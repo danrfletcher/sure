@@ -187,6 +187,7 @@ end %>
         </div>
       <% end %>
 
+      <%= render "gocardless_items/relink_banner" %>
       <%= yield :system_alerts %>
 
       <% if content_for?(:page_header) %>

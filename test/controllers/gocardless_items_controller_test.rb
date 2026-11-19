@@ -33,4 +33,26 @@ class GocardlessItemsControllerTest < ActionDispatch::IntegrationTest
     end
     assert_redirected_to setup_accounts_gocardless_item_path(@item)
   end
+
+  test "dashboard warns when a bank consent is about to lapse" do
+    @item.update!(consent_expires_at: 3.days.from_now)
+
+    get root_path
+    assert_includes response.body, "Revolut access expires in"
+    assert_select "form[action=?]", reconnect_gocardless_item_path(@item)
+  end
+
+  test "no warning while a consent has plenty of time left" do
+    @item.update!(consent_expires_at: 60.days.from_now)
+
+    get root_path
+    assert_not_includes response.body, "Re-link it to keep syncing"
+  end
+
+  test "an expired consent says syncing has stopped" do
+    @item.update!(status: :requires_update, consent_expires_at: 1.day.ago)
+
+    get root_path
+    assert_includes response.body, "has expired, so it has stopped syncing"
+  end
 end

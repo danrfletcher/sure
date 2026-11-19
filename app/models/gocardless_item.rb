@@ -184,6 +184,14 @@ class GocardlessItem < ApplicationRecord
     end
   end
 
+  RELINK_WARNING_WINDOW = 7.days
+
+  # Consents the owner should renew: expired, flagged by the importer, or lapsing within a week.
+  scope :needing_relink, -> {
+    where(status: :requires_update)
+      .or(where.not(consent_expires_at: nil).where(consent_expires_at: ..RELINK_WARNING_WINDOW.from_now))
+  }
+
   def consent_expired?
     consent_expires_at.present? && consent_expires_at <= Time.current
   end
