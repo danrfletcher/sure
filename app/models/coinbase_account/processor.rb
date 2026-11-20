@@ -432,6 +432,8 @@ class CoinbaseAccount::Processor
       external_id = "coinbase_txn_#{txn_data['id']}"
       existing = account.entries.find_by(external_id: external_id)
       if existing.present?
+        # Trades imported before trade cash was zeroed carried their price as cash (see the buy below)
+        existing.update!(amount: 0) if existing.entryable.is_a?(Trade) && existing.amount != 0
         # Update activity label if missing (fixes existing trades from before this was added)
         if existing.entryable.is_a?(Trade) && existing.entryable.investment_activity_label.blank?
           expected_label = txn_type == "buy" ? "Buy" : "Sell"
@@ -446,11 +448,15 @@ class CoinbaseAccount::Processor
 
       # Create the trade
       if txn_type == "buy"
-        # Buy: positive qty, money going out (negative amount)
+        # Buy: positive qty, no cash in this account. Each Coinbase wallet is its own
+        # account holding one coin and no cash: a buy is paid by card or bank (that
+        # charge is in the bank's own feed) or from a Coinbase cash wallet (its own
+        # account, with its own row). Booking the price here as well counted it twice
+        # and, signed as an inflow, sent the wallet's past cash negative.
         account.entries.create!(
           date: date,
           name: "Buy #{qty.round(8)} #{security.ticker}",
-          amount: -native_amount,
+          amount: 0,
           currency: txn_currency,
           external_id: external_id,
           source: "coinbase",
@@ -465,11 +471,12 @@ class CoinbaseAccount::Processor
         )
         Rails.logger.info("CoinbaseAccount::Processor - Created buy trade: #{qty} #{security.ticker} @ #{price} #{txn_currency}")
       else
-        # Sell: negative qty, money coming in (positive amount)
+        # Sell: negative qty, no cash in this account (the proceeds land in a cash
+        # wallet or bank, which records them), as for a buy above
         account.entries.create!(
           date: date,
           name: "Sell #{qty.round(8)} #{security.ticker}",
-          amount: native_amount,
+          amount: 0,
           currency: txn_currency,
           external_id: external_id,
           source: "coinbase",
@@ -507,6 +514,8 @@ class CoinbaseAccount::Processor
       external_id = "coinbase_buy_#{buy_data['id']}"
       existing = account.entries.find_by(external_id: external_id)
       if existing.present?
+        # Trades imported before trade cash was zeroed carried their price as cash (see the buy below)
+        existing.update!(amount: 0) if existing.entryable.is_a?(Trade) && existing.amount != 0
         # Update activity label if missing
         if existing.entryable.is_a?(Trade) && existing.entryable.investment_activity_label.blank?
           existing.entryable.update!(investment_activity_label: "Buy")
@@ -517,7 +526,7 @@ class CoinbaseAccount::Processor
       account.entries.create!(
         date: date,
         name: "Buy #{security.ticker}",
-        amount: -total,
+        amount: 0, # a coin wallet holds no cash: see process_buy_sell_transaction
         currency: currency,
         external_id: external_id,
         source: "coinbase",
@@ -552,6 +561,8 @@ class CoinbaseAccount::Processor
       external_id = "coinbase_sell_#{sell_data['id']}"
       existing = account.entries.find_by(external_id: external_id)
       if existing.present?
+        # Trades imported before trade cash was zeroed carried their price as cash (see the buy below)
+        existing.update!(amount: 0) if existing.entryable.is_a?(Trade) && existing.amount != 0
         # Update activity label if missing
         if existing.entryable.is_a?(Trade) && existing.entryable.investment_activity_label.blank?
           existing.entryable.update!(investment_activity_label: "Sell")
@@ -562,7 +573,7 @@ class CoinbaseAccount::Processor
       account.entries.create!(
         date: date,
         name: "Sell #{security.ticker}",
-        amount: total,
+        amount: 0, # a coin wallet holds no cash: see process_buy_sell_transaction
         currency: currency,
         external_id: external_id,
         source: "coinbase",
