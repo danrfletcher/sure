@@ -1,5 +1,6 @@
 module Family::PaypalCreditMatchable
-  # Opt-in (PAY_IN_3_ACCOUNT names the wallet, PAYPAL_CREDIT_CARD names the card account).
+  # Opt-in (PAY_IN_3_ACCOUNT is the wallet's account id, PAYPAL_CREDIT_CARD the card's; ids, not
+  # names, so renaming either account never switches this off).
   #
   # A repayment of PayPal Credit leaves the wallet as a PAYPAL_CREDIT_PAYMENT row. Left alone
   # Sure counts it as spending on top of the purchase it repays. This turns each such row into
@@ -10,13 +11,9 @@ module Family::PaypalCreditMatchable
   #
   # With dry_run: true nothing is written and the wallet rows that would be linked are returned.
   def auto_match_paypal_credit!(dry_run: false)
-    wallet_name = ENV["PAY_IN_3_ACCOUNT"].to_s.strip.downcase
-    card_name = ENV["PAYPAL_CREDIT_CARD"].to_s.strip
     none = dry_run ? [] : 0
-    return none if wallet_name.blank? || card_name.blank?
-
-    wallet = accounts.find_by("LOWER(accounts.name) = ?", wallet_name)
-    card = accounts.find_by(name: card_name, accountable_type: "CreditCard")
+    wallet = account_from_env("PAY_IN_3_ACCOUNT")
+    card = account_from_env("PAYPAL_CREDIT_CARD", type: "CreditCard")
     return none unless wallet && card
 
     rows = pay_in_3_rows(wallet).select { |r| r[:code] == "PAYPAL_CREDIT_PAYMENT" && r[:dir] == "DBIT" && r[:currency] == card.currency }

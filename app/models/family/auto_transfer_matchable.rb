@@ -169,7 +169,7 @@ module Family::AutoTransferMatchable
     auto_confirm_own_transfers!
     auto_match_pay_in_3!
     auto_match_paypal_credit!
-    auto_match_wallet_funding!
+    auto_match_paypal_funding!
   end
 
   # Opt-in (AUTO_CONFIRM_TRANSFERS=true). Pending matches never touch reports until

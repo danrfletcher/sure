@@ -9,7 +9,7 @@ class Family::WalletFundingMatchableTest < ActiveSupport::TestCase
     @wallet = @family.accounts.create!(name: "Test Wallet", balance: 0, currency: "USD",
                                       accountable: Depository.new, status: "active")
     @bank.update!(currency: "USD")
-    @on = { "WALLET_FUNDING_ACCOUNTS" => "test wallet", "WALLET_FUNDING_BANK_NAMES" => "walletco" }
+    @on = { "WALLET_FUNDING_ACCOUNTS" => @wallet.id, "WALLET_FUNDING_BANK_NAMES" => "walletco" }
   end
 
   def kind_of(entry) = entry.reload.entryable.kind

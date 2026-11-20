@@ -3,7 +3,8 @@ module Family::PayIn3Matchable
   REFUND_WINDOW_DAYS = 90
   LATER_WINDOW = (25..75)
 
-  # Opt-in (PAY_IN_3_ACCOUNT=PayPal, PAY_IN_3_CARD="PayPal Pay in 3").
+  # Opt-in (PAY_IN_3_ACCOUNT=<wallet account id>, PAY_IN_3_CARD=<credit-card account id>; ids,
+  # not names, so renaming either account never switches this off. The card must exist).
   #
   # PayPal Pay in 3 pays the merchant in full on day one and then takes three equal
   # instalments from the wallet, a month apart. In the bank feed the purchase is an
@@ -25,12 +26,9 @@ module Family::PayIn3Matchable
   #
   # With dry_run: true nothing is written and the plans are returned.
   def auto_match_pay_in_3!(dry_run: false)
-    wallet_name = ENV["PAY_IN_3_ACCOUNT"].to_s.strip.downcase
-    card_name = ENV["PAY_IN_3_CARD"].to_s.strip
-    return(dry_run ? { plans: [], parked: [] } : 0) if wallet_name.blank? || card_name.blank?
-
-    wallet = accounts.find_by("LOWER(accounts.name) = ?", wallet_name)
-    return(dry_run ? { plans: [], parked: [] } : 0) unless wallet
+    wallet = account_from_env("PAY_IN_3_ACCOUNT")
+    card = account_from_env("PAY_IN_3_CARD", type: "CreditCard")
+    return(dry_run ? { plans: [], parked: [] } : 0) unless wallet && card
 
     rows = pay_in_3_rows(wallet)
     return(dry_run ? { plans: [], parked: [] } : 0) if rows.empty?
@@ -38,7 +36,7 @@ module Family::PayIn3Matchable
     result = Family::PayIn3Matchable.plan(rows)
     return result if dry_run
 
-    Family::PayIn3Matchable.apply(self, wallet, card_name, result[:plans])
+    Family::PayIn3Matchable.apply(self, wallet, card, result[:plans])
   end
 
   def self.plan(rows)
@@ -133,9 +131,7 @@ module Family::PayIn3Matchable
     { plans: plans.select { |pl| pl[:resolved] }, unresolved: plans.reject { |pl| pl[:resolved] }, parked: loans.reject { |l| taken[l[:id]] } }
   end
 
-  def self.apply(family, wallet, card_name, plans)
-    card = family.accounts.find_by(name: card_name, accountable_type: "CreditCard") ||
-      Account.create_and_sync({ family: family, name: card_name, balance: 0, currency: "GBP", accountable_type: "CreditCard" }, skip_initial_sync: true)
+  def self.apply(family, wallet, card, plans)
     created = 0
 
     plans.each do |pl|
@@ -169,24 +165,24 @@ module Family::PayIn3Matchable
 
   private
 
-  # One hash per raw wallet row that has a stored entry.
-  def pay_in_3_rows(wallet)
-    provider = AccountProvider.find_by(account_id: wallet.id)&.provider
-    raw = provider.respond_to?(:raw_transactions_payload) ? provider.raw_transactions_payload : nil
-    raw = JSON.parse(raw) if raw.is_a?(String)
-    return [] if raw.blank?
+    # One hash per raw wallet row that has a stored entry.
+    def pay_in_3_rows(wallet)
+      provider = AccountProvider.find_by(account_id: wallet.id)&.provider
+      raw = provider.respond_to?(:raw_transactions_payload) ? provider.raw_transactions_payload : nil
+      raw = JSON.parse(raw) if raw.is_a?(String)
+      return [] if raw.blank?
 
-    entries = wallet.entries.where(source: "enable_banking").index_by(&:external_id)
-    raw.filter_map do |t|
-      data = t.with_indifferent_access
-      entry = entries[EnableBankingEntry::Processor.compute_external_id(data)]
-      next unless entry
+      entries = wallet.entries.where(source: "enable_banking").index_by(&:external_id)
+      raw.filter_map do |t|
+        data = t.with_indifferent_access
+        entry = entries[EnableBankingEntry::Processor.compute_external_id(data)]
+        next unless entry
 
-      {
-        id: entry.external_id, entry: entry, date: entry.date, amount: data.dig(:transaction_amount, :amount).to_d.to_f.abs,
-        currency: data.dig(:transaction_amount, :currency), dir: data[:credit_debit_indicator],
-        code: data.dig(:bank_transaction_code, :sub_code), merchant: data.dig(:creditor, :name).to_s.downcase.strip
-      }
+        {
+          id: entry.external_id, entry: entry, date: entry.date, amount: data.dig(:transaction_amount, :amount).to_d.to_f.abs,
+          currency: data.dig(:transaction_amount, :currency), dir: data[:credit_debit_indicator],
+          code: data.dig(:bank_transaction_code, :sub_code), merchant: data.dig(:creditor, :name).to_s.downcase.strip
+        }
+      end
     end
-  end
 end

@@ -49,13 +49,29 @@ class Family::PayInThreeMatchableTest < ActiveSupport::TestCase
     plan = { date: purchase.date, merchant: "shop", purchases: [ { id: "p", entry: purchase } ], charge: 30.99, credits: [],
              instalments: [ { id: "a", date: first.date, amount: 10.33, entry: first }, { id: "b", date: second.date, amount: 10.33, entry: second } ] }
 
-    assert_equal 1, Family::PayIn3Matchable.apply(family, wallet, "Test Pay in 3", [ plan ])
-    assert_equal 0, Family::PayIn3Matchable.apply(family, wallet, "Test Pay in 3", [ plan ])
+    card = family.accounts.create!(name: "Test Pay in 3", balance: 0, currency: "GBP", accountable: CreditCard.new, status: "active")
+    assert_equal 1, Family::PayIn3Matchable.apply(family, wallet, card, [ plan ])
+    assert_equal 0, Family::PayIn3Matchable.apply(family, wallet, card, [ plan ])
 
-    card = family.accounts.find_by!(name: "Test Pay in 3")
-    assert card.credit_card?
     assert_equal [ -10.33, -10.33, 30.99 ], card.entries.where(source: "pay_in_3").pluck(:amount).map(&:to_f).sort
     assert_equal "cc_payment", first.reload.entryable.kind
     assert_equal "standard", purchase.reload.entryable.kind
+  end
+
+  test "is found by account id, so renaming the wallet or card changes nothing" do
+    family = families(:dylan_family)
+    wallet = family.accounts.create!(name: "Test Wallet", balance: 0, currency: "GBP", accountable: Depository.new, status: "active")
+    card = family.accounts.create!(name: "Test Pay in 3", balance: 0, currency: "GBP", accountable: CreditCard.new, status: "active")
+    family.stubs(:pay_in_3_rows).returns([])
+
+    with_env_overrides("PAY_IN_3_ACCOUNT" => "Test Wallet", "PAY_IN_3_CARD" => "Test Pay in 3") do
+      assert_not family.send(:account_from_env, "PAY_IN_3_ACCOUNT"), "names are not accepted"
+    end
+    wallet.update!(name: "Renamed Wallet")
+    card.update!(name: "Renamed Card")
+    with_env_overrides("PAY_IN_3_ACCOUNT" => wallet.id, "PAY_IN_3_CARD" => card.id) do
+      assert_equal wallet, family.send(:account_from_env, "PAY_IN_3_ACCOUNT")
+      assert_equal card, family.send(:account_from_env, "PAY_IN_3_CARD", type: "CreditCard")
+    end
   end
 end

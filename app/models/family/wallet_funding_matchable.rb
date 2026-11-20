@@ -2,7 +2,8 @@ module Family::WalletFundingMatchable
   DEFAULT_WALLET_FUNDING_DAYS = 30
   DEFAULT_WALLET_FUNDING_FX_TOLERANCE = 0.05
 
-  # Opt-in (WALLET_FUNDING_ACCOUNTS=PayPal). A payment wallet such as PayPal pays the
+  # Opt-in (WALLET_FUNDING_ACCOUNTS=<the wallet account's id>, comma-separated for several;
+  # ids, not names, so renaming an account never switches this off). A payment wallet such as PayPal pays the
   # merchant first, and the bank is charged for it afterwards. Sure then holds the same
   # spending twice: a merchant row in the wallet account and a payment to the wallet's
   # name in the bank account.
@@ -23,17 +24,15 @@ module Family::WalletFundingMatchable
   # single wallet row that fits and no other unmatched bank payment fits it either.
   #
   # With dry_run: true nothing is written; returns the pairs as [bank_entry, wallet_entry, pass].
-  def auto_match_wallet_funding!(dry_run: false)
-    wallet_names = ENV.fetch("WALLET_FUNDING_ACCOUNTS", "").split(",").map { |n| n.strip.downcase }.reject(&:blank?)
-    return(dry_run ? [] : 0) if wallet_names.empty?
+  # exclude_wallet_ids are wallet rows another rule has already claimed (for dry runs).
+  def auto_match_wallet_funding!(dry_run: false, exclude_wallet_ids: [])
+    wallets = accounts_from_env("WALLET_FUNDING_ACCOUNTS")
+    return(dry_run ? [] : 0) if wallets.empty?
 
     patterns = ENV.fetch("WALLET_FUNDING_BANK_NAMES", "").split(",").map { |n| n.strip.downcase }.reject(&:blank?)
-    patterns = wallet_names if patterns.empty?
+    patterns = wallets.map { |w| w.name.downcase } if patterns.empty?
     window = Integer(ENV.fetch("WALLET_FUNDING_DAYS", DEFAULT_WALLET_FUNDING_DAYS), exception: false)
     window = DEFAULT_WALLET_FUNDING_DAYS if window.nil? || window.negative?
-
-    wallets = accounts.where("LOWER(accounts.name) IN (?)", wallet_names).to_a
-    return(dry_run ? [] : 0) if wallets.empty?
 
     wallet_ids = wallets.map(&:id)
     own = Entry.where(entryable_type: "Transaction", account_id: accounts.select(:id)).joins("INNER JOIN transactions ON transactions.id = entries.entryable_id")
@@ -41,7 +40,7 @@ module Family::WalletFundingMatchable
     already_used = own.where.not(account_id: wallet_ids)
       .where("transactions.extra ? 'wallet_funding_entry_id'")
       .pluck(Arel.sql("transactions.extra ->> 'wallet_funding_entry_id'"))
-    used = already_used.to_set
+    used = already_used.to_set + exclude_wallet_ids.map(&:to_s)
 
     wallet_rows = own.where(account_id: wallet_ids).where("entries.amount > 0")
       .where("transactions.kind = 'standard' OR (transactions.kind = 'cc_payment' AND transactions.extra ? 'pay_in_3_plan')")
