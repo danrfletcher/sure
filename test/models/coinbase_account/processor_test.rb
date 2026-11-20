@@ -106,7 +106,7 @@ class CoinbaseAccount::ProcessorTest < ActiveSupport::TestCase
   test "a buy paid by card adds the coin and leaves the wallet's cash alone" do
     CoinbaseAccount::HoldingsProcessor.any_instance.stubs(:process).returns(nil)
     buy = coinbase_txn(id: "txn_card_buy", type: "buy", btc_amount: "0.001", native_amount: "75.00")
-    buy["buy"] = { "subtotal" => { "amount" => "72.01", "currency" => "USD" }, "payment_method_name" => "4165********5761" }
+    buy["buy"] = { "subtotal" => { "amount" => "72.01", "currency" => "USD" }, "payment_method_name" => "Visa ****1234" }
     @coinbase_account.update!(raw_transactions_payload: { "transactions" => [ buy ] })
 
     CoinbaseAccount::Processor.new(@coinbase_account).process
