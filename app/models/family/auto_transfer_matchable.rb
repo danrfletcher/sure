@@ -167,6 +167,7 @@ module Family::AutoTransferMatchable
 
     sync_principal_only_loan_accounts(created_transfers)
     auto_confirm_own_transfers!
+    auto_match_pay_in_3!
     auto_match_wallet_funding!
   end
 

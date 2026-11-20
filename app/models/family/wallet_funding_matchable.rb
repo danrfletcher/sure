@@ -44,7 +44,8 @@ module Family::WalletFundingMatchable
     used = already_used.to_set
 
     wallet_rows = own.where(account_id: wallet_ids).where("entries.amount > 0")
-      .where("transactions.kind = 'standard'").order(:date, :created_at).to_a
+      .where("transactions.kind = 'standard' OR (transactions.kind = 'cc_payment' AND transactions.extra ? 'pay_in_3_plan')")
+      .order(:date, :created_at).to_a
 
     bank_scope = own.where.not(account_id: wallet_ids).where("entries.amount > 0")
       .where("transactions.kind = 'standard'")
