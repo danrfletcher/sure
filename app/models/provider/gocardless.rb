@@ -26,6 +26,9 @@ class Provider::Gocardless
 
   class ConfigurationError < Error; end
   class AuthenticationError < Error; end
+  # One account on a linked bank is closed or deleted (e.g. a Revolut vault). The bank's
+  # consent is fine, so this must not be treated as a login failure.
+  class AccountInactiveError < Error; end
   class RateLimitedError < Error; end
   # The bank consent (requisition) has expired or been revoked: the user must re-link.
   class ConsentExpiredError < Error; end
@@ -169,6 +172,10 @@ class Provider::Gocardless
       when 400
         raise Error.new("Bad request: #{summary(response)}", :bad_request)
       when 401
+        if response.body.to_s.include?("AccountInactiveError")
+          raise AccountInactiveError.new("Account is deactivated or no longer exists", :account_inactive)
+        end
+
         raise AuthenticationError.new("Invalid GoCardless credentials or token", :unauthorized)
       when 403
         raise AuthenticationError.new("Access forbidden: #{summary(response)}", :access_forbidden)

@@ -49,6 +49,15 @@ class Provider::GocardlessTest < ActiveSupport::TestCase
     assert_raises(Provider::Gocardless::AuthenticationError) { provider.account_transactions("c") }
   end
 
+  test "a 401 for a deactivated account is not an authentication failure" do
+    provider = Provider::Gocardless.new(secret_id: "i", secret_key: "k", tokens: { access: "A", access_expires_at: 1.day.from_now })
+    body = { summary: "Couldn't update account details", detail: "Account has been deactivated or it no longer exists.", status_code: 401, type: "AccountInactiveError" }
+    stub_request(:get, "#{BASE}/accounts/d/details/").to_return(json(body, status: 401))
+
+    error = assert_raises(Provider::Gocardless::AccountInactiveError) { provider.account_details("d") }
+    assert_not_kind_of Provider::Gocardless::AuthenticationError, error
+  end
+
   test "error messages never contain the response body's other fields" do
     provider = Provider::Gocardless.new(secret_id: "i", secret_key: "k", tokens: { access: "A", access_expires_at: 1.day.from_now })
     stub_request(:get, "#{BASE}/requisitions/r/").to_return(json({ summary: "Bad", detail: "d", secret: "leak" }, status: 400))

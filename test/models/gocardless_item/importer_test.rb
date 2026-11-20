@@ -96,6 +96,17 @@ class GocardlessItem::ImporterTest < ActiveSupport::TestCase
     import!
   end
 
+  test "a deactivated account is skipped and the bank stays linked" do
+    stub_linked_requisition([ "acc-1", "acc-gone" ])
+    @provider.stubs(:account_details).with("acc-gone").raises(Provider::Gocardless::AccountInactiveError.new("gone", :account_inactive))
+    @provider.stubs(:account_details).with("acc-1").returns(account: { name: "Current", currency: "GBP", cashAccountType: "CACC" })
+
+    assert_nothing_raised { import! }
+
+    assert @item.reload.good?
+    assert_equal [ "acc-1" ], @item.gocardless_accounts.pluck(:gocardless_account_id)
+  end
+
   test "an expired consent marks the item for re-linking and stops" do
     @provider.stubs(:requisition).returns(status: "EX", accounts: [])
 
