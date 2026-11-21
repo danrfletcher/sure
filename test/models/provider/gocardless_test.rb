@@ -58,6 +58,17 @@ class Provider::GocardlessTest < ActiveSupport::TestCase
     assert_not_kind_of Provider::Gocardless::AuthenticationError, error
   end
 
+  test "a 403 on one account's data is not an authentication failure, elsewhere it is" do
+    provider = Provider::Gocardless.new(secret_id: "i", secret_key: "k", tokens: { access: "A", access_expires_at: 1.day.from_now })
+    body = { summary: "The requested resource is unavailable for this account", detail: "Certain resources may be restricted" }
+    stub_request(:get, "#{BASE}/accounts/pot/balances/").to_return(json(body, status: 403))
+    stub_request(:get, "#{BASE}/requisitions/r/").to_return(json(body, status: 403))
+
+    error = assert_raises(Provider::Gocardless::AccountUnavailableError) { provider.account_balances("pot") }
+    assert_not_kind_of Provider::Gocardless::AuthenticationError, error
+    assert_raises(Provider::Gocardless::AuthenticationError) { provider.requisition("r") }
+  end
+
   test "error messages never contain the response body's other fields" do
     provider = Provider::Gocardless.new(secret_id: "i", secret_key: "k", tokens: { access: "A", access_expires_at: 1.day.from_now })
     stub_request(:get, "#{BASE}/requisitions/r/").to_return(json({ summary: "Bad", detail: "d", secret: "leak" }, status: 400))

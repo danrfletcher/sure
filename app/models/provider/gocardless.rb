@@ -29,6 +29,9 @@ class Provider::Gocardless
   # One account on a linked bank is closed or deleted (e.g. a Revolut vault). The bank's
   # consent is fine, so this must not be treated as a login failure.
   class AccountInactiveError < Error; end
+  # The bank refuses one resource of one account (a Monzo pot's balance, say: "The requested
+  # resource is unavailable for this account"). Other accounts and the consent are fine.
+  class AccountUnavailableError < Error; end
   class RateLimitedError < Error; end
   # The bank consent (requisition) has expired or been revoked: the user must re-link.
   class ConsentExpiredError < Error; end
@@ -108,7 +111,7 @@ class Provider::Gocardless
         options = { headers: headers(authenticated: authenticated) }
         options[:query] = query if query
         options[:body] = body if body
-        handle_response(self.class.public_send(verb, "#{BASE_URL}#{path}", options))
+        handle_response(self.class.public_send(verb, "#{BASE_URL}#{path}", options), path: path)
       end
     end
 
@@ -165,7 +168,7 @@ class Provider::Gocardless
       [ base_delay + jitter, 30 ].min
     end
 
-    def handle_response(response)
+    def handle_response(response, path: nil)
       case response.code
       when 200, 201
         JSON.parse(response.body, symbolize_names: true)
@@ -178,6 +181,12 @@ class Provider::Gocardless
 
         raise AuthenticationError.new("Invalid GoCardless credentials or token", :unauthorized)
       when 403
+        # On an account's own endpoint a 403 is about that account only; the requisition
+        # has already been read as linked. Elsewhere it is a credentials problem.
+        if path.to_s.start_with?("/accounts/")
+          raise AccountUnavailableError.new("Bank refused this account's data: #{summary(response)}", :account_unavailable)
+        end
+
         raise AuthenticationError.new("Access forbidden: #{summary(response)}", :access_forbidden)
       when 404
         raise Error.new("Resource not found", :not_found)

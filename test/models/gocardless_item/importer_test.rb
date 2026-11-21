@@ -107,6 +107,24 @@ class GocardlessItem::ImporterTest < ActiveSupport::TestCase
     assert_equal [ "acc-1" ], @item.gocardless_accounts.pluck(:gocardless_account_id)
   end
 
+  test "an account the bank refuses is skipped and the others still import" do
+    stub_linked_requisition([ "acc-1", "acc-pot" ])
+    import!
+    main = @item.gocardless_accounts.find_by!(gocardless_account_id: "acc-1")
+    pot = @item.gocardless_accounts.find_by!(gocardless_account_id: "acc-pot")
+    main.ensure_account_provider!(@sure_account)
+    pot.ensure_account_provider!(@family.accounts.create!(name: "Pot", balance: 0, currency: "GBP", accountable: Depository.new))
+
+    refused = Provider::Gocardless::AccountUnavailableError.new("refused", :account_unavailable)
+    @provider.stubs(:account_balances).with("acc-pot").raises(refused)
+    @provider.stubs(:account_transactions).with("acc-pot", anything).raises(refused)
+    @provider.stubs(:account_transactions).with("acc-1", anything).returns(transactions: { booked: [ booked("t1", "-2.00") ] })
+
+    assert_nothing_raised { import! }
+    assert @item.reload.good?
+    assert_equal 1, main.reload.raw_transactions_payload.size
+  end
+
   test "an expired consent marks the item for re-linking and stops" do
     @provider.stubs(:requisition).returns(status: "EX", accounts: [])
 
