@@ -315,6 +315,8 @@ class PagesController < ApplicationController
     end
 
     def cashflow_sankey_data
+      return funding_sankey_data if Current.user.cashflow_sankey_group_by == "funding"
+
       build_cashflow_sankey_data(
         dashboard_net_totals,
         dashboard_income_statement.income_totals(period: @period),
@@ -322,6 +324,18 @@ class PagesController < ApplicationController
         Current.family.currency,
         invested_total: dashboard_income_statement.invested_total(period: @period)
       )
+    end
+
+    # The funding view (IncomeStatement::FundingSankey) in the shape the
+    # dashboard chart reads: numbers, and each link coloured by its outer node.
+    def funding_sankey_data
+      graph = IncomeStatement::FundingSankey.new(dashboard_income_statement, period: @period).as_json
+      nodes = graph[:nodes].map { |n| n.slice(:id, :name, :filter_value, :color).merge(value: n[:value].to_f, percentage: n[:percentage].to_f) }
+      links = graph[:links].map do |l|
+        outer = nodes[l[:source]][:id] == "cash_flow_node" ? nodes[l[:target]] : nodes[l[:source]]
+        { source: l[:source], target: l[:target], value: l[:value].to_f, percentage: l[:percentage].to_f, color: outer[:color] }
+      end
+      { nodes: nodes, links: links, currency_symbol: Money::Currency.new(Current.family.currency).symbol }
     end
 
     # Preview-gated, and omitted from the section list entirely rather than

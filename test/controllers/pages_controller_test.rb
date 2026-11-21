@@ -343,6 +343,18 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-controller='sankey-chart']"
   end
 
+  test "dashboard sankey shows how spending was funded when grouped by funding" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    shopping = @family.categories.create!(name: "Shopping", color: "#FF5733")
+    create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100, category: shopping)
+
+    get root_path
+    assert_response :ok
+    data = JSON.parse(css_select("[data-controller='sankey-chart']").first["data-sankey-chart-data-value"])
+    assert_includes data["nodes"].map { |n| n["id"] }, "cash_flow_node"
+    assert_not_includes data["nodes"].map { |n| n["id"] }, "deficit_node"
+  end
+
   test "dashboard renders the cash flow rings with unspent income as a muted track on the outflows ring" do
     create_transaction(account: @family.accounts.first, name: "Salary", amount: -100_000, category: categories(:income))
     create_transaction(account: @family.accounts.first, name: "Groceries", amount: 100, category: categories(:food_and_drink))
