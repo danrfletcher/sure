@@ -372,7 +372,7 @@ class IncomeStatement::FundingSankey
     def add_node(id, name, kind, value, percentage, category = nil, color: category&.color)
       @nodes << { id: id, name: name, kind: kind.to_s, value: decimal(value), percentage: decimal(percentage),
         category_id: category&.id, filter_value: category && !category.other_investments? ? category.filter_value : nil,
-        color: color.presence || Category::UNCATEGORIZED_COLOR }
+        color: category ? color.presence || Category::UNCATEGORIZED_COLOR : color } # Cash Flow: nil, the chart's own green
       @nodes.size - 1
     end
 

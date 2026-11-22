@@ -351,7 +351,7 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     get root_path
     assert_response :ok
     data = JSON.parse(css_select("[data-controller='sankey-chart']").first["data-sankey-chart-data-value"])
-    assert_includes data["nodes"].map { |n| n["id"] }, "cash_flow_node"
+    assert_equal "var(--color-success)", data["nodes"].find { |n| n["id"] == "cash_flow_node" }["color"]
     assert_not_includes data["nodes"].map { |n| n["id"] }, "deficit_node"
   end
 

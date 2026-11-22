@@ -330,7 +330,9 @@ class PagesController < ApplicationController
     # dashboard chart reads: numbers, and each link coloured by its outer node.
     def funding_sankey_data
       graph = IncomeStatement::FundingSankey.new(dashboard_income_statement, period: @period).as_json
-      nodes = graph[:nodes].map { |n| n.slice(:id, :name, :filter_value, :color).merge(value: n[:value].to_f, percentage: n[:percentage].to_f) }
+      nodes = graph[:nodes].map do |n|
+        n.slice(:id, :name, :filter_value).merge(color: n[:color] || "var(--color-success)", value: n[:value].to_f, percentage: n[:percentage].to_f)
+      end
       links = graph[:links].map do |l|
         outer = nodes[l[:source]][:id] == "cash_flow_node" ? nodes[l[:target]] : nodes[l[:source]]
         { source: l[:source], target: l[:target], value: l[:value].to_f, percentage: l[:percentage].to_f, color: outer[:color] }
