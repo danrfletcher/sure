@@ -337,7 +337,7 @@ class PagesController < ApplicationController
         outer = nodes[l[:source]][:id] == "cash_flow_node" ? nodes[l[:target]] : nodes[l[:source]]
         { source: l[:source], target: l[:target], value: l[:value].to_f, percentage: l[:percentage].to_f, color: outer[:color] }
       end
-      { nodes: nodes, links: links, currency_symbol: Money::Currency.new(Current.family.currency).symbol }
+      { nodes: nodes, links: links, currency_symbol: Money::Currency.new(Current.family.currency).symbol, data_from: graph[:data_from] }
     end
 
     # Preview-gated, and omitted from the section list entirely rather than

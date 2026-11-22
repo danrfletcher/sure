@@ -78,7 +78,8 @@ class IncomeStatement::FundingSankey
     income = @income.values.sum
     spending = @expense.values.sum
     { basis: "net_by_funding", income: decimal(income), spending: decimal(spending),
-      net_savings: decimal(income - spending), unreconciled: decimal(gap.abs), nodes: @nodes, links: @links }
+      net_savings: decimal(income - spending), unreconciled: decimal(gap.abs),
+      data_from: (data_from if clamped?), nodes: @nodes, links: @links }
   end
 
   private
@@ -211,7 +212,17 @@ class IncomeStatement::FundingSankey
     def eligible_accounts = @eligible_accounts ||= @statement.eligible_accounts.to_a
     def eligible_ids = @eligible_ids ||= eligible_accounts.map(&:id).to_set
     def borrowing_account_ids = eligible_accounts.select { |a| BORROWING.key?(group_of(a)) }.map(&:id)
-    def date_range = @period.start_date..@period.end_date
+    def date_range = [ @period.start_date, data_from ].compact.max..@period.end_date
+
+    # FUNDING_DATA_FROM: the first day every account on the chart has data.
+    # Before it, money moving to an account whose history hasn't started looks
+    # like spending or income, so the chart never reads earlier than that.
+    def data_from
+      return @data_from if defined?(@data_from)
+      @data_from = @env.fetch("FUNDING_DATA_FROM", "").presence&.then { |d| Date.iso8601(d) }
+    end
+
+    def clamped? = data_from.present? && @period.start_date < data_from
 
     def transfer_kind?(transaction) = Transaction::BUDGET_EXCLUDED_KINDS.include?(transaction.kind)
 

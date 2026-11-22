@@ -100,6 +100,23 @@ class IncomeStatement::FundingSankeyTest < ActiveSupport::TestCase
     assert_balanced result
   end
 
+  test "FUNDING_DATA_FROM clamps the period start and says so" do
+    create_transaction(account: @checking, amount: 70, category: @shopping, date: @month + 3)
+    create_transaction(account: @checking, amount: 30, category: @shopping, date: @month + 20)
+    @env = @env.merge("FUNDING_DATA_FROM" => (@month + 10).iso8601)
+    result = graph
+
+    assert_equal @month + 10, result[:data_from]
+    assert_link result, "cash_flow_node", "expense_#{@shopping.id}", "30.0"
+    assert_balanced result
+
+    period = Period.custom(start_date: @month + 10, end_date: @month.end_of_month)
+    assert_nil IncomeStatement::FundingSankey.new(IncomeStatement.new(@family), period: period, env: @env).as_json[:data_from], "no note when nothing was cut"
+
+    period = Period.custom(start_date: @month - 60, end_date: @month + 5)
+    assert_empty IncomeStatement::FundingSankey.new(IncomeStatement.new(@family), period: period, env: @env).as_json[:links], "a period wholly before the date is empty"
+  end
+
   test "with no Loan Repayments category, interest nests beside the principal" do
     interest_paid = category("Card Interest")
     @env = @env.except("FUNDING_LOAN_REPAYMENTS_CATEGORY").merge("FUNDING_INTEREST_CATEGORY" => interest_paid.id)

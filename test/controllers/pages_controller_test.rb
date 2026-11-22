@@ -355,6 +355,17 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes data["nodes"].map { |n| n["id"] }, "deficit_node"
   end
 
+  test "funding sankey notes when the period was cut to the date every account has data" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100)
+
+    with_env_overrides("FUNDING_DATA_FROM" => 1.day.ago.to_date.iso8601) do
+      get root_path(period: "last_30_days")
+    end
+    assert_response :ok
+    assert_select "#cashflow-sankey-chart", text: /Shown from .* when every account has data/
+  end
+
   test "dashboard renders the cash flow rings with unspent income as a muted track on the outflows ring" do
     create_transaction(account: @family.accounts.first, name: "Salary", amount: -100_000, category: categories(:income))
     create_transaction(account: @family.accounts.first, name: "Groceries", amount: 100, category: categories(:food_and_drink))
