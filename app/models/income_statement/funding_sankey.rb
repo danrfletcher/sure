@@ -4,10 +4,12 @@
 # Left (sources): income categories grouped into families (Income, Investment
 # Returns, Monies Received, Asset Sales), plus the net moves of three balance
 # groups: Cash (current accounts fell), Withdrawals from Savings (savings fell)
-# and Borrowing (card and loan debt rose).
+# and Borrowing (card or loan debt rose, broken down by kind).
 # Right (uses): expense categories as the category Sankey nets them, plus
-# Increase in Cash on Hand, Savings, and Loan Repayments > Credit Card Principal
-# for the opposite moves. Each balance group sits on one side per period.
+# Increase in Cash on Hand, Savings, and Loan Repayments > Credit Card / Loan
+# Principal for the opposite moves. Each balance group sits on one side per
+# period; each kind of borrowing nets only against itself, so a loan that pays
+# off the cards shows as Loans borrowed and Credit Card Principal repaid.
 #
 # Accounts outside the three groups (investments, crypto, property) are
 # neutral: what happens inside them is not shown. Contributions into them show
@@ -36,7 +38,14 @@ class IncomeStatement::FundingSankey
     "asset_sales" => "Asset Sales", "cash" => "Cash", "withdrawals_from_savings" => "Withdrawals from Savings",
     "borrowing" => "Borrowing", "savings" => "Savings", "cash_on_hand" => "Increase in Cash on Hand",
     "loan_repayments" => "Loan Repayments", "credit_card_principal" => "Credit Card Principal",
+    "loan_principal" => "Loan Principal", "credit_cards" => "Credit Cards", "loans" => "Loans",
     "unreconciled" => "Unreconciled"
+  }.freeze
+
+  # Each kind of borrowing: its account type and its repayment line.
+  BORROWING = {
+    credit_cards: { accountable_type: "CreditCard", principal: "credit_card_principal" },
+    loans: { accountable_type: "Loan", principal: "loan_principal" }
   }.freeze
 
   COLORS = {
@@ -91,7 +100,7 @@ class IncomeStatement::FundingSankey
         next unless group # inside an investment, crypto or property account: neutral
 
         @group_net[group] += amount
-        if transfer_kind?(transaction)
+        if transfer_kind?(transaction) || repays_charted_debt?(transaction)
           follow_transfer(entry, transaction, group, amount)
           next
         end
@@ -110,7 +119,15 @@ class IncomeStatement::FundingSankey
       @sources["asset_sales"] += @asset_sales if @asset_sales.positive?
       place(:cash, "cash", "cash_on_hand")
       place(:savings, "withdrawals_from_savings", "savings")
-      place(:borrowing, "borrowing", "credit_card_principal")
+      @borrowed = Hash.new(0.to_d)  # kind => debt taken on (left)
+      @principal = Hash.new(0.to_d) # kind => debt paid down (right)
+      BORROWING.each_key do |kind|
+        net = @group_net[kind].round(2)
+        @borrowed[kind] += net if net.positive?
+        @principal[kind] += -net if net.negative?
+      end
+      @sources["borrowing"] = @borrowed.values.sum
+      @uses["principal"] = @principal.values.sum
     end
 
     def place(group, source, use)
@@ -131,7 +148,7 @@ class IncomeStatement::FundingSankey
         return
       end
       return if transaction.transfer_as_inflow || transaction.transfer_as_outflow
-      return neutral(group, amount) unless group == :borrowing
+      return neutral(group, amount) unless BORROWING.key?(group)
 
       wallet_group = if (plan = transaction.extra&.dig("pay_in_3_plan")) && entry.source == "pay_in_3"
         pay_in_3_wallet_groups[plan] # a Pay in 3 plan's charge or seller refund
@@ -150,7 +167,7 @@ class IncomeStatement::FundingSankey
     # Pay in 3 plan => the group of the wallet its purchases were paid from.
     def pay_in_3_wallet_groups
       @pay_in_3_wallet_groups ||= Entry.joins("JOIN transactions pt ON pt.id = entries.entryable_id AND entries.entryable_type = 'Transaction'")
-        .where("pt.extra ? 'pay_in_3_plan'").where.not(account_id: group_account_ids(:borrowing))
+        .where("pt.extra ? 'pay_in_3_plan'").where.not(account_id: borrowing_account_ids)
         .where.not(source: "pay_in_3").includes(:account)
         .each_with_object({}) { |e, map| map[e.entryable.extra["pay_in_3_plan"]] ||= group_of(e.account) }
     end
@@ -161,7 +178,7 @@ class IncomeStatement::FundingSankey
     # the carry rows and the bank leg that settles them, so the wallet
     # payment counts as Cash even when the bank debit lands in a later period.
     def carry_entry_ids
-      carries = Entry.where(account_id: group_account_ids(:borrowing), source: "paypal_funding", date: date_range)
+      carries = Entry.where(account_id: borrowing_account_ids, source: "paypal_funding", date: date_range)
                      .where("external_id LIKE 'paypal_funding:charge:%' OR external_id LIKE 'paypal_funding:bank:%'")
                      .includes(:entryable).to_a
       bank_legs = carries.filter_map { |e| e.entryable.transfer_as_inflow&.outflow_transaction&.entry&.id }
@@ -176,7 +193,7 @@ class IncomeStatement::FundingSankey
 
     def wallet_entries
       @wallet_entries ||= begin
-        ids = Transaction.joins(:entry).where(entries: { account_id: group_account_ids(:borrowing), date: date_range })
+        ids = Transaction.joins(:entry).where(entries: { account_id: borrowing_account_ids, date: date_range })
                          .where("transactions.extra ? 'wallet_funding_entry_id'")
                          .pluck(Arel.sql("transactions.extra ->> 'wallet_funding_entry_id'"))
         Entry.where(id: ids).includes(:account).index_by { |e| e.id.to_s }
@@ -185,17 +202,27 @@ class IncomeStatement::FundingSankey
 
     def group_of(account)
       case account.accountable_type
-      when "CreditCard", "Loan" then :borrowing
+      when "CreditCard" then :credit_cards
+      when "Loan" then :loans
       when "Depository" then account.subtype == "savings" ? :savings : :cash
       end
     end
 
     def eligible_accounts = @eligible_accounts ||= @statement.eligible_accounts.to_a
     def eligible_ids = @eligible_ids ||= eligible_accounts.map(&:id).to_set
-    def group_account_ids(group) = eligible_accounts.select { |a| group_of(a) == group }.map(&:id)
+    def borrowing_account_ids = eligible_accounts.select { |a| BORROWING.key?(group_of(a)) }.map(&:id)
     def date_range = @period.start_date..@period.end_date
 
     def transfer_kind?(transaction) = Transaction::BUDGET_EXCLUDED_KINDS.include?(transaction.kind)
+
+    # A loan payment whose other leg lands on a card or loan on the chart is a
+    # balance move (it shows as principal), not spending. Paid to a debt that
+    # is off the chart, it stays spending under its category.
+    def repays_charted_debt?(transaction)
+      return false unless transaction.kind == "loan_payment"
+      partner = transaction.transfer_as_outflow&.inflow_transaction&.entry
+      partner.present? && eligible_ids.include?(partner.account_id) && BORROWING.key?(group_of(partner.account))
+    end
 
     def cash_outflow(transaction, amount)
       %w[investment_contribution loan_payment].include?(transaction.kind) ? amount.abs : amount
@@ -256,6 +283,7 @@ class IncomeStatement::FundingSankey
         color = COLORS[key == "withdrawals_from_savings" ? "savings" : key]
         node = add_node("funding_#{key}", label(key), :funding, value, percentage(value, capacity), color: color)
         add_link(node, center, value, percentage(value, capacity))
+        add_borrowing_kinds(node, value) if key == "borrowing"
       end
       if (asset = @sources["asset_sales"]).positive?
         node = @nodes.index { |n| n[:id] == "funding_asset_sales" }
@@ -268,10 +296,18 @@ class IncomeStatement::FundingSankey
       end
     end
 
+    # Borrowing always shows what it was, even when there is one kind.
+    def add_borrowing_kinds(parent, total)
+      @borrowed.select { |_, v| v.positive? }.each do |kind, value|
+        child = add_node("funding_sub_borrowing_#{kind}", label(kind.to_s), :funding, value, percentage(value, total), color: COLORS["borrowing"])
+        add_link(child, parent, value, percentage(value, total))
+      end
+    end
+
     def add_expense(center, capacity)
       tree = Hash.new { |h, k| h[k] = [] }
       @expense.each { |category, value| tree[category.parent || category] << [ category, value ] }
-      principal = @uses["credit_card_principal"]
+      principal = @uses["principal"]
       loan_root = loan_repayments_category
       tree[loan_root] if loan_root && principal.positive?
       # With no Loan Repayments category, interest sits beside the principal
@@ -301,9 +337,12 @@ class IncomeStatement::FundingSankey
       end
     end
 
-    def add_principal(parent, value, total)
-      child = add_node("funding_sub_credit_card_principal", label("credit_card_principal"), :funding, value, percentage(value, total), color: COLORS["loan_repayments"])
-      add_link(parent, child, value, percentage(value, total))
+    def add_principal(parent, _value, total)
+      @principal.select { |_, v| v.positive? }.each do |kind, value|
+        key = BORROWING.dig(kind, :principal)
+        child = add_node("funding_sub_#{key}", label(key), :funding, value, percentage(value, total), color: COLORS["loan_repayments"])
+        add_link(parent, child, value, percentage(value, total))
+      end
     end
 
     def add_uses(center, capacity)

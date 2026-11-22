@@ -10,6 +10,7 @@ class IncomeStatement::FundingSankeyTest < ActiveSupport::TestCase
     @savings = account("Savings account", Depository.new(subtype: "savings"))
     @wallet = account("Wallet", Depository.new)
     @card = account("Card", CreditCard.new)
+    @loan = account("Loan", Loan.new)
     @brokerage = account("Brokerage", Investment.new)
     @salary = category("Salary")
     @interest = category("Interest")
@@ -59,6 +60,7 @@ class IncomeStatement::FundingSankeyTest < ActiveSupport::TestCase
   test "card spending is Borrowing, and card debt paid down is Loan Repayments with interest beside it" do
     transaction(@card, 200, @shopping)
     assert_link graph, "funding_borrowing", "cash_flow_node", "200.0"
+    assert_link graph, "funding_sub_borrowing_credit_cards", "funding_borrowing", "200.0"
 
     transaction(@checking, -1000, @salary)
     transaction(@card, 10, @interest_paid)
@@ -70,6 +72,31 @@ class IncomeStatement::FundingSankeyTest < ActiveSupport::TestCase
     assert_link result, "expense_#{@loans.id}", "funding_sub_credit_card_principal", "90.0"
     assert_link result, "expense_#{@loans.id}", "expense_sub_#{@interest_paid.id}", "10.0"
     assert_link result, "cash_flow_node", "funding_use_cash_on_hand", "700.0"
+    assert_balanced result
+  end
+
+  test "each kind of borrowing nets only against itself: a loan that pays off the cards shows on both sides" do
+    transaction(@checking, -1000, @salary)
+    transaction(@card, 300, @shopping)
+    create_transfer(from_account: @loan, to_account: @card, amount: 1000, date: @month + 2)
+    result = graph
+
+    assert_link result, "funding_borrowing", "cash_flow_node", "1000.0"
+    assert_link result, "funding_sub_borrowing_loans", "funding_borrowing", "1000.0"
+    assert_nil node(result, "funding_sub_borrowing_credit_cards")
+    assert_link result, "expense_#{@loans.id}", "funding_sub_credit_card_principal", "700.0"
+    assert_balanced result
+  end
+
+  test "a loan payment to a loan on the chart is Loan Principal, not spending" do
+    transaction(@checking, -1000, @salary)
+    payment = create_transfer(from_account: @checking, to_account: @loan, amount: 250, date: @month + 4)
+    payment.outflow_transaction.update!(kind: "loan_payment", category: @shopping)
+    result = graph
+
+    assert_link result, "expense_#{@loans.id}", "funding_sub_loan_principal", "250.0"
+    assert_nil node(result, "expense_#{@shopping.id}")
+    assert_link result, "cash_flow_node", "funding_use_cash_on_hand", "750.0"
     assert_balanced result
   end
 
