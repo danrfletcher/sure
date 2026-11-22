@@ -32,6 +32,20 @@ class Family::PaypalFundingMatchableTest < ActiveSupport::TestCase
     assert_empty card_amounts
   end
 
+  test "the transfer guesser never pairs the matcher's own card rows" do
+    spend = gbp_tx(date: 20.days.ago.to_date, account: @wallet, amount: 73.01, name: "Battery")
+    gbp_tx(date: 16.days.ago.to_date, account: @bank, amount: 73.01, name: "PAYPAL PAYMENT")
+    run_match
+    other = @family.accounts.create!(name: "Other Bank", balance: 0, currency: "GBP", accountable: Depository.new, status: "active")
+    top_up_out = gbp_tx(date: spend.date, account: other, amount: 73.01, name: "To own account")
+    top_up_in = gbp_tx(date: spend.date, account: @bank, amount: -73.01, name: "From own account")
+
+    card_ids = @card.entries.pluck(:entryable_id)
+    pairs = @family.transfer_match_candidates.map { |c| [ c.outflow_transaction_id, c.inflow_transaction_id ] }
+    assert pairs.flatten.none? { |id| card_ids.include?(id) }
+    assert_includes pairs, [ top_up_out.entryable_id, top_up_in.entryable_id ]
+  end
+
   test "an unmarked card charge needs pence to match, and only one candidate" do
     odd = gbp_tx(date: 20.days.ago.to_date, account: @wallet, amount: 41.73, name: "Adam Atwater")
     odd_charge = gbp_tx(date: 20.days.ago.to_date, account: @bank, amount: 41.73, name: "Atcorepair")

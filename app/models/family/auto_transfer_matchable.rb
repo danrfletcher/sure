@@ -346,6 +346,14 @@ module Family::AutoTransferMatchable
     # both UNION branches, since two balances of one connection may share a
     # currency or not. Only auto_match_transfers! sets it (see the comment there);
     # the manual "match as transfer" dialog leaves it off.
+    # The PayPal funding matcher's own bookkeeping rows (the carry rows it books
+    # on the PayPal Credit card) are already linked by that matcher. Pairing one
+    # with an ordinary bank row of the same amount (a top-up between your own
+    # accounts on the same day) steals that row from its real partner.
+    def matcher_rows_exclusion_sql
+      "COALESCE(inflow_candidates.source, '') <> 'paypal_funding' AND COALESCE(outflow_candidates.source, '') <> 'paypal_funding'"
+    end
+
     def provider_exclusion_condition_sql
       exclusions = Provider::Factory.registered_adapters.filter_map do |adapter|
         adapter.auto_match_exclusion_sql("inflow_accounts", "outflow_accounts")
@@ -459,6 +467,7 @@ module Family::AutoTransferMatchable
             (:filter_transaction_ids = FALSE OR inflow_candidates.entryable_id IN (:transaction_ids) OR outflow_candidates.entryable_id IN (:transaction_ids)) AND
             (:include_rejected = TRUE OR rejected_transfers.id IS NULL) AND
             #{provider_exclusion_condition} AND
+            #{matcher_rows_exclusion_sql} AND
             #{common_writer_condition_sql}
           UNION ALL
           SELECT
@@ -558,6 +567,7 @@ module Family::AutoTransferMatchable
               inflow_txns.category_id = outflow_txns.category_id
             ) AND
             #{provider_exclusion_condition} AND
+            #{matcher_rows_exclusion_sql} AND
             #{common_writer_condition_sql}
         ) transfer_match_candidates
         ORDER BY transfer_match_candidates.match_rank ASC, transfer_match_candidates.date_diff ASC
