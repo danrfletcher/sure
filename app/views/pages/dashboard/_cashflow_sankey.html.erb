@@ -1,7 +1,7 @@
 <%# locals: (sankey_data:, period:) %>
 <div id="cashflow-sankey-chart">
   <% if sankey_data[:data_from] %>
-    <p class="text-xs text-secondary px-4 pb-2"><%= t("pages.dashboard.cashflow_sankey.data_from", date: l(sankey_data[:data_from], format: :long)) %></p>
+    <p class="text-xs text-secondary px-4 pb-2"><%= t("pages.dashboard.cashflow_sankey.data_from", date: "#{sankey_data[:data_from].strftime("%B")} #{sankey_data[:data_from].day.ordinalize} #{sankey_data[:data_from].year}") %></p>
   <% end %>
   <% if sankey_data[:links].present? %>
     <div class="w-full h-96">

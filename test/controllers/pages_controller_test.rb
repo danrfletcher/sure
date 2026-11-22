@@ -359,11 +359,12 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
     create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100)
 
-    with_env_overrides("FUNDING_DATA_FROM" => 1.day.ago.to_date.iso8601) do
+    from = 1.day.ago.to_date
+    with_env_overrides("FUNDING_DATA_FROM" => from.iso8601) do
       get root_path(period: "last_30_days")
     end
     assert_response :ok
-    assert_select "#cashflow-sankey-chart", text: /Shown from .* when every account has data/
+    assert_select "#cashflow-sankey-chart p", text: "Shown from #{from.strftime('%B')} #{from.day.ordinalize} #{from.year}"
   end
 
   test "dashboard renders the cash flow rings with unspent income as a muted track on the outflows ring" do
