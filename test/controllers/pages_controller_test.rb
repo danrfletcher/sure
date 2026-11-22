@@ -384,6 +384,7 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok
     assert_select "#cashflow-sankey-chart p", text: "Shown from #{from.strftime('%B')} #{from.day.ordinalize} #{from.year}"
     assert_select "#outflows-donut-section p", text: "Shown from #{from.strftime('%B')} #{from.day.ordinalize} #{from.year}"
+    assert_select "[data-controller='sankey-chart'][data-sankey-chart-start-date-value='#{from.iso8601}']"
   end
 
   test "dashboard renders the cash flow rings with unspent income as a muted track on the outflows ring" do

@@ -173,12 +173,13 @@ class PagesController < ApplicationController
       {
         "insights_feed" => -> { insights_feed_section },
         "cashflow_sankey" => -> {
+          sankey_data = cashflow_sankey_data
           {
             key: "cashflow_sankey",
             title: "pages.dashboard.cashflow_sankey.title",
             partial: "pages/dashboard/cashflow_sankey",
             layout: section_layout("cashflow_sankey"),
-            locals: { sankey_data: cashflow_sankey_data, period: @period },
+            locals: { sankey_data: sankey_data, period: clamped_period(sankey_data[:data_from]) },
             visible: @accounts.any?,
             collapsible: true
           }
@@ -220,13 +221,12 @@ class PagesController < ApplicationController
         },
         "outflows_donut" => -> {
           outflows_data = funding_grouping? ? build_funding_outflows_donut_data : build_outflows_donut_data(dashboard_net_totals)
-          period = outflows_data[:data_from] ? Period.custom(start_date: outflows_data[:data_from], end_date: @period.end_date) : @period
           {
             key: "outflows_donut",
             title: "pages.dashboard.outflows_donut.title",
             partial: "pages/dashboard/outflows_donut",
             layout: section_layout("outflows_donut"),
-            locals: { outflows_data: outflows_data, period: period },
+            locals: { outflows_data: outflows_data, period: clamped_period(outflows_data[:data_from]) },
             visible: @accounts.any? && outflows_data[:categories].present?,
             collapsible: true
           }
@@ -587,6 +587,12 @@ class PagesController < ApplicationController
           end
         end
       end
+    end
+
+    # The period as the Funding view reads it: its start moved up to
+    # FUNDING_DATA_FROM, so click-through filters match the figures shown.
+    def clamped_period(data_from)
+      data_from ? Period.custom(start_date: data_from, end_date: @period.end_date) : @period
     end
 
     def funding_grouping? = Current.user.cashflow_sankey_group_by == "funding"
