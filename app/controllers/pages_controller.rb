@@ -219,13 +219,14 @@ class PagesController < ApplicationController
           }
         },
         "outflows_donut" => -> {
-          outflows_data = build_outflows_donut_data(dashboard_net_totals)
+          outflows_data = funding_grouping? ? build_funding_outflows_donut_data : build_outflows_donut_data(dashboard_net_totals)
+          period = outflows_data[:data_from] ? Period.custom(start_date: outflows_data[:data_from], end_date: @period.end_date) : @period
           {
             key: "outflows_donut",
             title: "pages.dashboard.outflows_donut.title",
             partial: "pages/dashboard/outflows_donut",
             layout: section_layout("outflows_donut"),
-            locals: { outflows_data: outflows_data, period: @period },
+            locals: { outflows_data: outflows_data, period: period },
             visible: @accounts.any? && outflows_data[:categories].present?,
             collapsible: true
           }
@@ -315,7 +316,7 @@ class PagesController < ApplicationController
     end
 
     def cashflow_sankey_data
-      return funding_sankey_data if Current.user.cashflow_sankey_group_by == "funding"
+      return funding_sankey_data if funding_grouping?
 
       build_cashflow_sankey_data(
         dashboard_net_totals,
@@ -329,7 +330,7 @@ class PagesController < ApplicationController
     # The funding view (IncomeStatement::FundingSankey) in the shape the
     # dashboard chart reads: numbers, and each link coloured by its outer node.
     def funding_sankey_data
-      graph = IncomeStatement::FundingSankey.new(dashboard_income_statement, period: @period).as_json
+      graph = funding_graph
       nodes = graph[:nodes].map do |n|
         n.slice(:id, :name, :filter_value).merge(color: n[:color] || "var(--color-success)", value: n[:value].to_f, percentage: n[:percentage].to_f)
       end
@@ -586,6 +587,39 @@ class PagesController < ApplicationController
           end
         end
       end
+    end
+
+    def funding_grouping? = Current.user.cashflow_sankey_group_by == "funding"
+
+    def funding_graph
+      @funding_graph ||= IncomeStatement::FundingSankey.new(dashboard_income_statement, period: @period).as_json
+    end
+
+    # The Funding chart's right side as the Outflows donut: spending by
+    # category, Loan Repayments, Savings and any Unreconciled. Increase in Cash
+    # on Hand is money kept, not an outflow, so it is left out.
+    FUNDING_OUTFLOW_ICONS = { "funding_loan_repayments" => "landmark", "funding_use_savings" => "piggy-bank", "funding_use_unreconciled" => "circle-help" }.freeze
+
+    def build_funding_outflows_donut_data
+      graph = funding_graph
+      currency = Current.family.currency
+      rows = graph[:links].select { |l| l[:source].zero? }.map { |l| graph[:nodes][l[:target]].merge(value: l[:value].to_d) }
+        .reject { |n| n[:id] == "funding_use_cash_on_hand" || n[:value].zero? }
+      icons = Current.family.categories.where(id: rows.filter_map { |n| n[:category_id] }).index_by(&:id)
+      total = rows.sum { |n| n[:value] }
+      categories = rows.sort_by { |n| -n[:value] }.map do |n|
+        category = icons[n[:category_id]]
+        {
+          id: n[:category_id] || n[:id], name: n[:name], filter_value: n[:filter_value],
+          amount: n[:value].to_f.round(2), currency: currency,
+          percentage: total.zero? ? 0.0 : (n[:value] / total * 100).to_f.round(1),
+          color: n[:color] || Category::UNCATEGORIZED_COLOR,
+          icon: category ? category.lucide_icon : FUNDING_OUTFLOW_ICONS[n[:id]],
+          clickable: n[:filter_value].present?
+        }
+      end
+      { categories: categories, total: total.to_f.round(2), currency: currency,
+        currency_symbol: Money::Currency.new(currency).symbol, data_from: graph[:data_from] }
     end
 
     def build_outflows_donut_data(net_totals)
