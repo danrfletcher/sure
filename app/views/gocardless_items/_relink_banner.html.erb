@@ -1,0 +1,14 @@
+<% items = Current.family ? Current.family.gocardless_items.active.needing_relink.ordered.to_a : [] %>
+<% items.each do |item| %>
+  <div class="mb-4 flex items-center justify-between gap-4 rounded-lg border border-warning bg-warning/10 px-4 py-3 text-sm text-primary">
+    <span>
+      <% if item.consent_expired? || item.requires_update? %>
+        <%= t("gocardless_items.relink_banner.expired", bank: item.name) %>
+      <% else %>
+        <%= t("gocardless_items.relink_banner.expiring", bank: item.name, count: [ item.consent_days_left.to_i, 0 ].max) %>
+      <% end %>
+    </span>
+    <%= button_to t("gocardless_items.relink_banner.action"), reconnect_gocardless_item_path(item),
+          method: :post, form: { data: { turbo: false } }, class: "shrink-0 rounded-lg bg-container-inset px-3 py-1.5 font-medium text-primary hover:bg-container-hover" %>
+  </div>
+<% end %>

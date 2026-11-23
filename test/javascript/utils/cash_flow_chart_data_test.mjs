@@ -92,6 +92,21 @@ test("accepts a graph grouped by account", () => {
   assert.equal(graph.basis, "net_by_account");
   assert.equal(graph.nodes[1].kind, "account");
 });
+test("accepts a graph grouped by funding", () => {
+  const body = payload();
+  body.sankey.basis = "net_by_funding";
+  body.sankey.nodes[1] = {
+    id: "funding_borrowing",
+    name: "Borrowing",
+    kind: "funding",
+    value: "12.345",
+    percentage: "100.0",
+    color: "#dc2626",
+  };
+  const graph = cashFlowChartData(body);
+  assert.equal(graph.basis, "net_by_funding");
+  assert.equal(graph.nodes[1].kind, "funding");
+});
 test("rejects an unknown basis", () => {
   const body = payload();
   body.sankey.basis = "net_by_merchant";

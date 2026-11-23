@@ -1,10 +1,11 @@
 class Family < ApplicationRecord
+  include GocardlessConnectable
   has_many :financekit_items, dependent: :destroy
   has_many :financekit_account_lineages, dependent: :destroy
   has_many :financekit_conflicts, dependent: :destroy
 
   include FioConnectable
-  include Syncable, AutoTransferMatchable, Subscribeable, VectorSearchable
+  include Syncable, AutoTransferMatchable, WalletFundingMatchable, PayIn3Matchable, PaypalCreditMatchable, PaypalFundingMatchable, KlarnaFeedMatchable, Subscribeable, VectorSearchable
   include PlaidConnectable, SimplefinConnectable, LunchflowConnectable, AkahuConnectable, EnableBankingConnectable, TruelayerConnectable
   include CoinbaseConnectable, BinanceConnectable, KrakenConnectable, CoinspotConnectable, CoinstatsConnectable, SnaptradeConnectable, MercuryConnectable, BrexConnectable, SophtronConnectable
   include IndexaCapitalConnectable, IbkrConnectable, WiseConnectable

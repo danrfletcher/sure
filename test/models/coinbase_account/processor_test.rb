@@ -103,6 +103,34 @@ class CoinbaseAccount::ProcessorTest < ActiveSupport::TestCase
     assert_equal quantity, holding.qty
   end
 
+  test "a buy paid by card adds the coin and leaves the wallet's cash alone" do
+    CoinbaseAccount::HoldingsProcessor.any_instance.stubs(:process).returns(nil)
+    buy = coinbase_txn(id: "txn_card_buy", type: "buy", btc_amount: "0.001", native_amount: "75.00")
+    buy["buy"] = { "subtotal" => { "amount" => "72.01", "currency" => "USD" }, "payment_method_name" => "Visa ****1234" }
+    @coinbase_account.update!(raw_transactions_payload: { "transactions" => [ buy ] })
+
+    CoinbaseAccount::Processor.new(@coinbase_account).process
+
+    entry = @account.entries.find_by!(external_id: "coinbase_txn_txn_card_buy")
+    assert_equal 0.to_d, entry.amount
+    assert_equal BigDecimal("0.001"), entry.entryable.qty
+    assert_equal BigDecimal("72010"), entry.entryable.price
+  end
+
+  test "a buy imported with its price as cash is put right on the next sync" do
+    CoinbaseAccount::HoldingsProcessor.any_instance.stubs(:process).returns(nil)
+    @coinbase_account.update!(raw_transactions_payload: {
+      "transactions" => [ coinbase_txn(id: "txn_old_buy", type: "buy", btc_amount: "0.001", native_amount: "66.58") ]
+    })
+    CoinbaseAccount::Processor.new(@coinbase_account).process
+    entry = @account.entries.find_by!(external_id: "coinbase_txn_txn_old_buy")
+    entry.update_columns(amount: -66.58)
+
+    CoinbaseAccount::Processor.new(@coinbase_account).process
+
+    assert_equal 0.to_d, entry.reload.amount
+  end
+
   test "imports a staking reward with its native value as income, not zero" do
     CoinbaseAccount::HoldingsProcessor.any_instance.stubs(:process).returns(nil)
     @coinbase_account.update!(raw_transactions_payload: {

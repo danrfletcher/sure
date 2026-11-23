@@ -29,6 +29,7 @@ class AccountsController < ApplicationController
     @plaid_items = visible_provider_items(family.plaid_items.ordered.with_attached_logo.includes(:plaid_accounts))
     @simplefin_items = visible_provider_items(family.simplefin_items.ordered.with_attached_logo)
     @lunchflow_items = visible_provider_items(family.lunchflow_items.ordered.with_attached_logo.includes(:lunchflow_accounts))
+    @gocardless_items = visible_provider_items(family.gocardless_items.ordered.with_attached_logo.includes(:gocardless_accounts))
     @redbark_items = visible_provider_items(family.redbark_items.ordered.with_attached_logo.includes(:redbark_accounts))
     @akahu_items = visible_provider_items(family.akahu_items.ordered.with_attached_logo.includes(:akahu_accounts))
     @up_items = visible_provider_items(family.up_items.ordered.with_attached_logo.includes(:up_accounts))
@@ -834,6 +835,13 @@ class AccountsController < ApplicationController
       @fio_items.each do |item|
         latest_sync = item.latest_sync_record
         @fio_sync_stats_map[item.id] = latest_sync&.sync_stats || {}
+      end
+
+      # GoCardless sync stats
+      @gocardless_sync_stats_map = {}
+      @gocardless_items.each do |item|
+        latest_sync = item.latest_sync_record
+        @gocardless_sync_stats_map[item.id] = latest_sync&.sync_stats || {}
       end
     end
 end

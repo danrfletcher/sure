@@ -166,9 +166,54 @@ module Family::AutoTransferMatchable
     end
 
     sync_principal_only_loan_accounts(created_transfers)
+    auto_confirm_own_transfers!
+    auto_match_pay_in_3!
+    auto_match_paypal_credit!
+    auto_match_paypal_funding!
+  end
+
+  # Opt-in (AUTO_CONFIRM_TRANSFERS=true). Pending matches never touch reports until
+  # confirmed, so the user's own movements between accounts count as income and spending
+  # until someone clicks. This confirms a pending match when it is plainly one of the
+  # household's own movements: same currency, different accounts, within
+  # AUTO_CONFIRM_TRANSFER_DAYS (default 2) and BOTH legs carry a payee name that is the
+  # family's own: a member's full name or a pattern in AUTO_CONFIRM_TRANSFER_NAMES
+  # (comma-separated, case-insensitive substrings). Anything else stays pending.
+  def auto_confirm_own_transfers!
+    return unless ActiveModel::Type::Boolean.new.cast(ENV["AUTO_CONFIRM_TRANSFERS"])
+
+    patterns = own_transfer_name_patterns
+    return if patterns.empty?
+
+    max_days = Integer(ENV.fetch("AUTO_CONFIRM_TRANSFER_DAYS", 2), exception: false) || 2
+    Transfer.pending
+      .joins(inflow_transaction: { entry: :account })
+      .where(accounts: { family_id: id })
+      .includes(inflow_transaction: :entry, outflow_transaction: :entry)
+      .find_each do |transfer|
+        inflow = transfer.inflow_transaction.entry
+        outflow = transfer.outflow_transaction.entry
+        next if inflow.account_id == outflow.account_id
+        next unless inflow.currency == outflow.currency
+        next if (inflow.date - outflow.date).abs > max_days
+        next unless [ inflow, outflow ].all? { |entry| own_transfer_name?(entry.name, patterns) }
+
+        transfer.confirm!
+      end
   end
 
   private
+    def own_transfer_name_patterns
+      member_names = users.map { |user| [ user.first_name, user.last_name ].compact_blank.join(" ") }
+      extra = ENV.fetch("AUTO_CONFIRM_TRANSFER_NAMES", "").split(",")
+      (member_names + extra).map { |name| name.to_s.squish.downcase }.reject { |name| name.length < 4 }.uniq
+    end
+
+    def own_transfer_name?(name, patterns)
+      text = name.to_s.squish.downcase
+      patterns.any? { |pattern| text.include?(pattern) }
+    end
+
     # A principal-only loan replays a linked transfer as principal. The balance
     # was materialized before this match existed, so re-sync from the transfer's
     # entry dates.
@@ -301,6 +346,14 @@ module Family::AutoTransferMatchable
     # both UNION branches, since two balances of one connection may share a
     # currency or not. Only auto_match_transfers! sets it (see the comment there);
     # the manual "match as transfer" dialog leaves it off.
+    # The PayPal funding matcher's own bookkeeping rows (the carry rows it books
+    # on the PayPal Credit card) are already linked by that matcher. Pairing one
+    # with an ordinary bank row of the same amount (a top-up between your own
+    # accounts on the same day) steals that row from its real partner.
+    def matcher_rows_exclusion_sql
+      "COALESCE(inflow_candidates.source, '') <> 'paypal_funding' AND COALESCE(outflow_candidates.source, '') <> 'paypal_funding'"
+    end
+
     def provider_exclusion_condition_sql
       exclusions = Provider::Factory.registered_adapters.filter_map do |adapter|
         adapter.auto_match_exclusion_sql("inflow_accounts", "outflow_accounts")
@@ -414,6 +467,7 @@ module Family::AutoTransferMatchable
             (:filter_transaction_ids = FALSE OR inflow_candidates.entryable_id IN (:transaction_ids) OR outflow_candidates.entryable_id IN (:transaction_ids)) AND
             (:include_rejected = TRUE OR rejected_transfers.id IS NULL) AND
             #{provider_exclusion_condition} AND
+            #{matcher_rows_exclusion_sql} AND
             #{common_writer_condition_sql}
           UNION ALL
           SELECT
@@ -513,6 +567,7 @@ module Family::AutoTransferMatchable
               inflow_txns.category_id = outflow_txns.category_id
             ) AND
             #{provider_exclusion_condition} AND
+            #{matcher_rows_exclusion_sql} AND
             #{common_writer_condition_sql}
         ) transfer_match_candidates
         ORDER BY transfer_match_candidates.match_rank ASC, transfer_match_candidates.date_diff ASC

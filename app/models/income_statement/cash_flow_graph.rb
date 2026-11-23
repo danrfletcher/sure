@@ -2,10 +2,11 @@
 # Aggregation stays in Sankey; neither controller builds its own financial totals.
 class IncomeStatement::CashFlowGraph
   # group_by values: flows through one Cash Flow node by category (the default),
-  # or through each account.
+  # through each account, or by category with the balance moves that funded them.
   GROUPINGS = {
     "category" => "IncomeStatement::Sankey",
-    "account" => "IncomeStatement::AccountSankey"
+    "account" => "IncomeStatement::AccountSankey",
+    "funding" => "IncomeStatement::FundingSankey"
   }.freeze
 
   def initialize(statement, period:, group_by: "category", as_of: Date.current, time_zone: Time.zone.tzinfo.identifier)

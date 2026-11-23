@@ -9,6 +9,7 @@ class ProviderConnectionStatus
     { key: "fio", type: "FioItem", association: :fio_items, accounts: :fio_accounts },
     { key: "plaid", type: "PlaidItem", association: :plaid_items, accounts: :plaid_accounts },
     { key: "simplefin", type: "SimplefinItem", association: :simplefin_items, accounts: :simplefin_accounts },
+    { key: "gocardless", type: "GocardlessItem", association: :gocardless_items, accounts: :gocardless_accounts },
     { key: "lunchflow", type: "LunchflowItem", association: :lunchflow_items, accounts: :lunchflow_accounts },
     { key: "enable_banking", type: "EnableBankingItem", association: :enable_banking_items, accounts: :enable_banking_accounts },
     { key: "truelayer", type: "TruelayerItem", association: :truelayer_items, accounts: :truelayer_accounts },

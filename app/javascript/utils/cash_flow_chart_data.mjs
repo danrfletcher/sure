@@ -12,7 +12,9 @@ export function cashFlowChartData(body) {
   const graph = body.sankey;
   if (
     !/^[A-Z]{3,5}$/.test(body.currency) ||
-    !["net_by_category", "net_by_account"].includes(graph?.basis) ||
+    !["net_by_category", "net_by_account", "net_by_funding"].includes(
+      graph?.basis,
+    ) ||
     !Array.isArray(graph.nodes) ||
     !Array.isArray(graph.links)
   ) {
@@ -42,6 +44,7 @@ export function cashFlowChartData(body) {
         "surplus",
         "deficit",
         "invested",
+        "funding",
       ].includes(node.kind)
     ) {
       throw new Error("Invalid cash flow node");

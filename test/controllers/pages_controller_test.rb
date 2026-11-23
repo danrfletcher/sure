@@ -343,6 +343,50 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-controller='sankey-chart']"
   end
 
+  test "dashboard sankey shows how spending was funded when grouped by funding" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    shopping = @family.categories.create!(name: "Shopping", color: "#FF5733")
+    create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100, category: shopping)
+
+    get root_path
+    assert_response :ok
+    data = JSON.parse(css_select("[data-controller='sankey-chart']").first["data-sankey-chart-data-value"])
+    assert_equal "var(--color-success)", data["nodes"].find { |n| n["id"] == "cash_flow_node" }["color"]
+    assert_not_includes data["nodes"].map { |n| n["id"] }, "deficit_node"
+  end
+
+  test "outflows donut follows the funding chart's right side when grouped by funding" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    checking = @family.accounts.create!(name: "Checking", balance: 0, currency: @family.currency, accountable: Depository.new, status: "active")
+    card = @family.accounts.create!(name: "Card", balance: 0, currency: @family.currency, accountable: CreditCard.new, status: "active")
+    shopping = @family.categories.create!(name: "Shopping", color: "#FF5733")
+    create_transaction(account: checking, name: "Salary", amount: -1000, currency: @family.currency)
+    create_transaction(account: checking, name: "General shopping", amount: 100, category: shopping, currency: @family.currency)
+    create_transfer(from_account: checking, to_account: card, amount: 50, currency: @family.currency)
+
+    get root_path
+    assert_response :ok
+    assert_select "#outflows-donut-section" do
+      assert_select "a", text: /Shopping/
+      assert_select "div[data-category-id='funding_loan_repayments']", text: /Loan Repayments/
+      assert_select "span", text: /Increase in Cash on Hand/, count: 0
+    end
+  end
+
+  test "funding sankey notes when the period was cut to the date every account has data" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100)
+
+    from = 1.day.ago.to_date
+    with_env_overrides("FUNDING_DATA_FROM" => from.iso8601) do
+      get root_path(period: "last_30_days")
+    end
+    assert_response :ok
+    assert_select "#cashflow-sankey-chart p", text: "Shown from #{from.strftime('%B')} #{from.day.ordinalize} #{from.year}"
+    assert_select "#outflows-donut-section p", text: "Shown from #{from.strftime('%B')} #{from.day.ordinalize} #{from.year}"
+    assert_select "[data-controller='sankey-chart'][data-sankey-chart-start-date-value='#{from.iso8601}']"
+  end
+
   test "dashboard renders the cash flow rings with unspent income as a muted track on the outflows ring" do
     create_transaction(account: @family.accounts.first, name: "Salary", amount: -100_000, category: categories(:income))
     create_transaction(account: @family.accounts.first, name: "Groceries", amount: 100, category: categories(:food_and_drink))
