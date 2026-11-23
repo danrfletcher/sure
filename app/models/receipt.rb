@@ -6,7 +6,10 @@ require "digest/sha2"
 # Intakes (photo classifier, email capture) post receipts here; a nightly job
 # matches them to transactions.
 class Receipt < ApplicationRecord
+  InvalidUploadError = Class.new(StandardError)
+
   MAX_FILE_SIZE = Transaction::MAX_ATTACHMENT_SIZE
+  READ_CHUNK_SIZE = 1.megabyte
   ALLOWED_CONTENT_TYPES = Transaction::ALLOWED_CONTENT_TYPES
 
   belongs_to :family
@@ -44,8 +47,27 @@ class Receipt < ApplicationRecord
   scope :in_queue, -> { where(status: :waiting) }
 
   class << self
+    def manager?(user)
+      user&.admin? || user&.member?
+    end
+
     def sha256_of(content)
       Digest::SHA256.hexdigest(content)
+    end
+
+    # Reads an uploaded file within the size limit and checks that its bytes
+    # are an allowed type, whatever the client declared.
+    # Returns { content:, filename:, content_type: }.
+    def read_upload!(file)
+      filename = file.original_filename.to_s
+      content = read_upload_content!(file)
+      raise InvalidUploadError, "file is empty" if content.empty?
+
+      content_type = Marcel::MimeType.for(StringIO.new(content), name: filename, declared_type: file.content_type.presence)
+      raise InvalidUploadError, "file must be a PDF or an image (#{ALLOWED_CONTENT_TYPES.join(", ")})" unless ALLOWED_CONTENT_TYPES.include?(content_type)
+      raise InvalidUploadError, "file is not a readable PDF" if content_type == "application/pdf" && !content.start_with?("%PDF-")
+
+      { content: content, filename: filename, content_type: content_type }
     end
 
     # Stores a receipt file once per family. Posting the same bytes again
@@ -92,6 +114,23 @@ class Receipt < ApplicationRecord
 
   def requeue!
     update!(status: :waiting, matched_transaction: nil, matched_at: nil, attention_reason: nil, candidates: [])
+  end
+
+  class << self
+    private
+
+      def read_upload_content!(file)
+        too_large = InvalidUploadError.new("file must be at most #{MAX_FILE_SIZE / 1.megabyte} MB")
+        raise too_large if file.respond_to?(:size) && file.size > MAX_FILE_SIZE
+
+        content = +"".b
+        while (chunk = file.read(READ_CHUNK_SIZE)).present?
+          content << chunk
+          raise too_large if content.bytesize > MAX_FILE_SIZE
+        end
+        file.rewind if file.respond_to?(:rewind)
+        content
+      end
   end
 
   private

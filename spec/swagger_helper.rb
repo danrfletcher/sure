@@ -193,6 +193,57 @@ RSpec.configure do |config|
               meta: { '$ref' => '#/components/schemas/Pagination' }
             }
           },
+          Receipt: {
+            type: :object,
+            required: %w[id status source content_sha256 created_at updated_at],
+            properties: {
+              id: { type: :string, format: :uuid },
+              status: { type: :string, enum: %w[waiting archived needs_attention matched dismissed] },
+              source: { type: :string, enum: %w[photo email] },
+              source_ref: { type: :string, nullable: true, description: 'Where the receipt came from in the sending system, e.g. an Immich asset id' },
+              merchant: { type: :string, nullable: true },
+              total: { type: :string, nullable: true },
+              currency: { type: :string, nullable: true },
+              receipt_date: { type: :string, format: :date, nullable: true },
+              klarna: { type: :boolean, description: 'The receipt shows Klarna; its transaction can take up to 45 days to arrive' },
+              filename: { type: :string },
+              content_type: { type: :string },
+              byte_size: { type: :integer, minimum: 1 },
+              content_sha256: { type: :string, description: 'SHA-256 of the file (lowercase hex); each file is stored once per family' },
+              attention_reason: { type: :string, nullable: true, description: 'Why the receipt needs a person to look at it' },
+              candidates: { type: :array, items: { type: :object }, description: 'Near-miss transactions kept for a receipt that needs attention' },
+              matched_transaction_id: { type: :string, format: :uuid, nullable: true },
+              matched_at: { type: :string, format: :'date-time', nullable: true },
+              created_at: { type: :string, format: :'date-time' },
+              updated_at: { type: :string, format: :'date-time' }
+            }
+          },
+          ReceiptResponse: {
+            type: :object,
+            required: %w[data meta],
+            properties: {
+              data: { '$ref' => '#/components/schemas/Receipt' },
+              meta: {
+                type: :object,
+                required: %w[duplicate],
+                properties: {
+                  duplicate: { type: :boolean, description: 'True when the file was already queued; the existing receipt is returned and nothing is created' }
+                }
+              }
+            }
+          },
+          ReceiptCollection: {
+            type: :object,
+            required: %w[data meta],
+            properties: {
+              data: {
+                type: :array,
+                maxItems: 100,
+                items: { '$ref' => '#/components/schemas/Receipt' }
+              },
+              meta: { '$ref' => '#/components/schemas/Pagination' }
+            }
+          },
           FamilyExportFile: {
             type: :object,
             required: %w[attached],
