@@ -48,6 +48,10 @@ class Setting < RailsSettings::Base
   field :external_assistant_model, type: :string
   field :external_assistant_agent_id, type: :string
   field :brand_fetch_client_id, type: :string, default: ENV["BRAND_FETCH_CLIENT_ID"]
+  # Receipt matcher: accounts it never links receipts to. Comma-separated; each
+  # entry is an account id, an exact account name, or the last digits of a
+  # connected provider's mask / account number. See Receipt::ExcludedAccounts.
+  field :receipt_excluded_accounts, type: :string, default: ENV["RECEIPT_EXCLUDED_ACCOUNTS"]
   field :brand_fetch_high_res_logos, type: :boolean, default: ENV.fetch("BRAND_FETCH_HIGH_RES_LOGOS", "false") == "true"
 
   # Set by `bin/rails security:backfill_encryption` once every model/field it

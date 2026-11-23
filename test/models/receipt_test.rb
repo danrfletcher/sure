@@ -19,7 +19,7 @@ class ReceiptTest < ActiveSupport::TestCase
   end
 
   test "intake stores the file and starts the receipt waiting" do
-    receipt, created = intake(merchant: "Pret", total: 4.5, currency: "gbp", receipt_date: Date.new(2026, 11, 1), source_ref: "immich-1")
+    receipt, created = intake(merchant: "Pret", total: 4.5, currency: "gbp", receipt_date: Date.current - 2, source_ref: "immich-1")
 
     assert created
     assert receipt.persisted?
