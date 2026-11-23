@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_195447) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -2152,6 +2152,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_195447) do
     t.index ["status"], name: "index_questrade_items_on_status"
   end
 
+  create_table "receipts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "family_id", null: false
+    t.uuid "matched_transaction_id"
+    t.string "status", default: "waiting", null: false
+    t.string "source", null: false
+    t.string "source_ref", limit: 255
+    t.string "merchant", limit: 255
+    t.decimal "total", precision: 19, scale: 4
+    t.string "currency", limit: 3
+    t.date "receipt_date"
+    t.boolean "klarna", default: false, null: false
+    t.string "filename", limit: 255, null: false
+    t.string "content_type", limit: 100, null: false
+    t.bigint "byte_size", null: false
+    t.string "content_sha256", limit: 64, null: false
+    t.string "attention_reason"
+    t.jsonb "candidates", default: [], null: false
+    t.datetime "matched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["family_id", "content_sha256"], name: "index_receipts_on_family_and_content_sha256", unique: true
+    t.index ["family_id", "status"], name: "index_receipts_on_family_and_status"
+    t.index ["family_id"], name: "index_receipts_on_family_id"
+    t.index ["matched_transaction_id"], name: "index_receipts_on_matched_transaction_id"
+  end
+
   create_table "recurrence_rules", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "day_of_month"
@@ -3351,6 +3377,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_195447) do
   add_foreign_key "push_subscriptions", "users"
   add_foreign_key "questrade_accounts", "questrade_items"
   add_foreign_key "questrade_items", "families"
+  add_foreign_key "receipts", "families", on_delete: :cascade
+  add_foreign_key "receipts", "transactions", column: "matched_transaction_id", on_delete: :nullify
   add_foreign_key "recurrence_rules", "recurring_transactions", on_delete: :cascade
   add_foreign_key "recurring_allocations", "entries", on_delete: :nullify
   add_foreign_key "recurring_allocations", "recurring_occurrences", column: ["recurring_occurrence_id", "currency"], primary_key: ["id", "currency"], name: "fk_recurring_allocations_currency_matches_occurrence", on_delete: :cascade
