@@ -22,6 +22,9 @@
   all_segments = cashflow_data[:inflows] + cashflow_data[:outflows]
 %>
 <div id="cashflow-donut-section" class="@container px-4 space-y-4">
+  <% if cashflow_data[:data_from] %>
+    <p class="text-xs text-secondary"><%= t("pages.dashboard.cashflow_sankey.data_from", date: "#{cashflow_data[:data_from].strftime("%B")} #{cashflow_data[:data_from].day.ordinalize} #{cashflow_data[:data_from].year}") %></p>
+  <% end %>
   <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
     <p class="text-sm text-secondary">
       <%= t(".date_range", start_date: l(period.date_range.begin, format: :long), end_date: l(period.date_range.end, format: :long)) %>
@@ -100,7 +103,7 @@
               </div>
 
               <p class="text-sm text-secondary privacy-sensitive whitespace-nowrap mt-1">
-                <%= t(".of_income", amount: format_money(Money.new(cashflow_data[:total_income], cashflow_data[:currency]))) %>
+                <%= t(cashflow_data[:funding] ? ".of_funding" : ".of_income", amount: format_money(Money.new(cashflow_data[:total_income], cashflow_data[:currency]))) %>
               </p>
 
               <% if cashflow_data[:net].negative? %>
@@ -109,7 +112,7 @@
                 </p>
               <% else %>
                 <p class="text-sm font-medium text-success privacy-sensitive whitespace-nowrap mt-2">
-                  <%= t(".left_amount", amount: format_money(Money.new(cashflow_data[:net], cashflow_data[:currency]))) %>
+                  <%= t(cashflow_data[:funding] ? ".kept_amount" : ".left_amount", amount: format_money(Money.new(cashflow_data[:net], cashflow_data[:currency]))) %>
                 </p>
               <% end %>
             </div>
