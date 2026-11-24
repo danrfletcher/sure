@@ -1,0 +1,58 @@
+---
+en:
+  receipts:
+    not_authorized: You are not authorized to view receipts.
+    index:
+      title: Receipts
+      subtitle: Receipts waiting for their transaction. A nightly job matches them as transactions arrive.
+      tabs_aria: Filter receipts by status
+      tabs:
+        needs_attention: Needs attention (%{count})
+        waiting: Waiting (%{count})
+        matched: Matched (%{count})
+        archived: Archived (%{count})
+        dismissed: Dismissed (%{count})
+      table:
+        receipt: Receipt
+        date: Date
+        total: Total
+        source: Source
+        status: Status
+      row:
+        no_date: No date
+        no_total: No total
+        klarna: Klarna
+        near_misses: Closest transactions
+        matched_to: Matched to
+      empty:
+        needs_attention:
+          title: Nothing needs your attention
+          description: Receipts that could not be matched on their own show up here.
+        waiting:
+          title: No receipts waiting
+          description: New receipts wait here until their transaction arrives.
+        matched:
+          title: No matched receipts yet
+          description: Receipts attached to a transaction show up here.
+        archived:
+          title: No archived receipts
+          description: Receipts that were already too old when they arrived are kept here.
+        dismissed:
+          title: No dismissed receipts
+          description: Receipts that were marked as not a receipt show up here.
+    status:
+      needs_attention: Needs attention
+      waiting: Waiting
+      matched: Matched
+      archived: Archived
+      dismissed: Dismissed
+    source:
+      photo: Photo
+      email: Email
+    reason:
+      no_transaction_found: No transaction found
+      ambiguous: More than one transaction could match
+      missing_details: The receipt has no total or date
+      transaction_attachment_limit: The matching transaction already has the maximum number of attachments
+      attach_failed: The file could not be attached to the transaction
+      older_than_wait_window: Already too old when it arrived

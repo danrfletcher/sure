@@ -787,6 +787,10 @@ Rails.application.routes.draw do
     end
   end
 
+  resources :receipts, only: %i[index] do
+    get :file, on: :member
+  end
+
   # Convenience routes for polymorphic paths
   # Example: account_path(Account.new(accountable: Depository.new)) => /depositories/123
   direct :edit_account do |model, options|
