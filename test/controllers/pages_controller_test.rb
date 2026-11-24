@@ -373,6 +373,25 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "cash flow rings follow the funding chart when grouped by funding" do
+    @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
+    checking = @family.accounts.create!(name: "Checking", balance: 0, currency: @family.currency, accountable: Depository.new, status: "active")
+    card = @family.accounts.create!(name: "Card", balance: 0, currency: @family.currency, accountable: CreditCard.new, status: "active")
+    shopping = @family.categories.create!(name: "Shopping", color: "#FF5733")
+    create_transaction(account: checking, name: "Salary", amount: -1000, currency: @family.currency)
+    create_transaction(account: checking, name: "General shopping", amount: 100, category: shopping, currency: @family.currency)
+    create_transfer(from_account: checking, to_account: card, amount: 50, currency: @family.currency)
+
+    get root_path
+    assert_response :ok
+    assert_select "#cashflow-donut-section" do
+      assert_select "a", text: /Shopping/
+      assert_select "div[data-category-id='out_funding_loan_repayments']", text: /Loan Repayments/
+      assert_select "div[data-category-id='unused']", text: /Increase in Cash on Hand/
+      assert_select "div[data-category-id='overage']", count: 0
+    end
+  end
+
   test "funding sankey notes when the period was cut to the date every account has data" do
     @user.update!(preferences: (@user.preferences || {}).merge("cashflow_sankey_group_by" => "funding"))
     create_transaction(account: @family.accounts.first, name: "General shopping", amount: 100)

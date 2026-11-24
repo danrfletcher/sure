@@ -663,6 +663,8 @@ class PagesController < ApplicationController
     def build_cashflow_donut_data(month, account_ids, eligible_accounts)
       period = Period.custom(start_date: month, end_date: [ month.end_of_month, Date.current ].min)
       statement = account_ids ? Current.family.income_statement(accounts: eligible_accounts.where(id: account_ids)) : dashboard_income_statement
+      return build_funding_cashflow_donut_data(statement, period, month, account_ids) if funding_grouping?
+
       net_totals = statement.net_category_totals(period: period)
 
       total_income = net_totals.total_net_income
@@ -693,6 +695,71 @@ class PagesController < ApplicationController
         month: month,
         period: period,
         account_ids: account_ids
+      }
+    end
+
+    # The rings as the Funding chart reads the widget's month: the inflows ring
+    # is the chart's left side (income by category, plus Cash, Withdrawals
+    # from Savings, Borrowing, Asset Sales, Unreconciled), the outflows ring
+    # its right side as the Outflows donut shows it (spending, Loan
+    # Repayments, Savings, Unreconciled). Increase in Cash on Hand is money
+    # kept, so it is the outflows ring's "left" track. The two sides always
+    # balance, so there is never an "over" slice. The month starts no earlier
+    # than FUNDING_DATA_FROM, and drill-downs use the same start.
+    def build_funding_cashflow_donut_data(statement, period, month, account_ids)
+      graph = IncomeStatement::FundingSankey.new(statement, period: period).as_json
+      if graph[:data_from]
+        start = [ graph[:data_from], period.end_date ].min
+        period = Period.custom(start_date: start, end_date: period.end_date)
+      end
+      currency = Current.family.currency
+      nodes = graph[:nodes]
+      links = graph[:links]
+      children = ->(index) { links.select { |l| l[:target] == index }.map { |l| [ l[:source], l[:value].to_d ] } }
+
+      left = links.select { |l| l[:target].zero? }.flat_map do |l|
+        node = nodes[l[:source]]
+        kids = node[:kind] == "income" ? children.(l[:source]).select { |i, _| nodes[i][:category_id] } : []
+        kids.any? ? kids.map { |i, v| [ nodes[i], v ] } : [ [ node, l[:value].to_d ] ]
+      end
+      right = links.select { |l| l[:source].zero? }.map { |l| [ nodes[l[:target]], l[:value].to_d ] }
+      kept = right.find { |n, _| n[:id] == "funding_use_cash_on_hand" }&.last || 0.to_d
+      right = right.reject { |n, _| n[:id] == "funding_use_cash_on_hand" }
+
+      ring_total = [ left.sum { |_, v| v }, right.sum { |_, v| v } + kept ].max
+      categories = Current.family.categories.where(id: (left + right).filter_map { |n, _| n[:category_id] }).index_by(&:id)
+      segments = ->(rows, prefix) do
+        rows.reject { |_, v| v.zero? }.sort_by { |_, v| -v }.map do |n, v|
+          category = categories[n[:category_id]]
+          {
+            id: "#{prefix}_#{n[:id]}", name: n[:name], filter_value: n[:filter_value],
+            amount: v.to_f.round(2), currency: currency,
+            percentage: ring_total.zero? ? 0 : (v / ring_total * 100).to_f.round(1),
+            color: n[:color] || Category::UNCATEGORIZED_COLOR,
+            icon: category ? category.lucide_icon : FUNDING_OUTFLOW_ICONS[n[:id]],
+            clickable: n[:filter_value].present?
+          }
+        end
+      end
+      inflows = segments.(left, "in")
+      outflows = segments.(right, "out")
+      has_categories = inflows.any? || outflows.any?
+      outflows << cashflow_donut_balance_segment("unused", t("pages.dashboard.cashflow_donut.kept"), kept, ring_total, "var(--budget-unused-fill)", "piggy-bank", currency) if kept.positive?
+
+      total_out = right.sum { |_, v| v }
+      {
+        inflows: inflows,
+        outflows: outflows,
+        has_categories: has_categories,
+        total_income: ring_total.to_f.round(2),
+        total_expense: total_out.to_f.round(2),
+        net: kept.to_f.round(2),
+        currency: currency,
+        month: month,
+        period: period,
+        account_ids: account_ids,
+        funding: true,
+        data_from: graph[:data_from]
       }
     end
 
