@@ -48,6 +48,9 @@ class Receipt < ApplicationRecord
 
   scope :ordered, -> { order(created_at: :desc) }
   # Receipts the matcher still has to work on
+  # Statuses a person can still act on by hand
+  OPEN_STATUSES = %w[waiting needs_attention archived].freeze
+
   scope :in_queue, -> { where(status: :waiting) }
 
   class << self
@@ -99,6 +102,10 @@ class Receipt < ApplicationRecord
     end
   end
 
+  def open?
+    OPEN_STATUSES.include?(status)
+  end
+
   def wait_days
     klarna? ? KLARNA_WAIT_DAYS : WAIT_DAYS
   end
@@ -130,6 +137,22 @@ class Receipt < ApplicationRecord
 
   def mark_matched!(transaction)
     update!(status: :matched, matched_transaction: transaction, matched_at: Time.current, attention_reason: nil, candidates: [])
+  end
+
+  # Links the receipt to the transaction by attaching the receipt's own blob
+  # (no second copy) and marks it matched. Returns :matched, :attachment_limit
+  # or :attach_failed, leaving the receipt untouched unless it matched.
+  def attach_to!(transaction)
+    return :attachment_limit if transaction.attachments.size >= Transaction::MAX_ATTACHMENTS_PER_TRANSACTION
+
+    transaction.class.transaction do
+      transaction.attachments.attach(file.blob)
+      raise ActiveRecord::Rollback unless transaction.attachments_attachments.exists?(blob_id: file.blob.id)
+
+      mark_matched!(transaction)
+    end
+
+    matched? ? :matched : :attach_failed
   end
 
   def requeue!

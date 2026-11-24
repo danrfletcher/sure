@@ -146,4 +146,36 @@ class ReceiptTest < ActiveSupport::TestCase
       receipt.destroy!
     end
   end
+
+  test "attach_to! reuses the blob and marks the receipt matched" do
+    receipt, = intake
+    transaction = @family.transactions.first
+
+    assert_no_difference "ActiveStorage::Blob.count" do
+      assert_equal :matched, receipt.attach_to!(transaction)
+    end
+
+    assert receipt.reload.matched?
+    assert_equal receipt.file.blob.id, transaction.attachments.last.blob.id
+  end
+
+  test "attach_to! stops at the attachment limit without changing the receipt" do
+    receipt, = intake
+    transaction = @family.transactions.first
+    transaction.stubs(:attachments).returns(stub(size: Transaction::MAX_ATTACHMENTS_PER_TRANSACTION))
+
+    assert_equal :attachment_limit, receipt.attach_to!(transaction)
+    assert receipt.reload.waiting?
+  end
+
+  test "open? is true until a receipt is matched or dismissed" do
+    receipt, = intake
+    assert receipt.open?
+
+    receipt.flag_for_attention!(reason: "ambiguous")
+    assert receipt.open?
+
+    receipt.dismiss!
+    assert_not receipt.open?
+  end
 end

@@ -2,6 +2,36 @@
 en:
   receipts:
     not_authorized: You are not authorized to view receipts.
+    not_open: This receipt has already been matched or dismissed.
+    match:
+      matched: Receipt attached to %{transaction}.
+      not_available: That transaction can't be matched to this receipt.
+      attachment_limit: That transaction already has the maximum of %{max} attachments.
+      failed: The receipt could not be attached to that transaction.
+    dismiss:
+      dismissed: Receipt dismissed.
+    requeue:
+      requeued: Receipt put back in the queue.
+      not_archived: Only archived receipts can be put back in the queue.
+    show:
+      open_file: Open file
+      requeue: Put back in the queue
+      dismiss: Not a receipt
+      dismiss_confirm: Dismiss this receipt? It will no longer be matched to a transaction.
+      file: File
+      match_title: Match to a transaction
+      search_label: Merchant or description
+      amount_label: Amount
+      from_label: From
+      to_label: To
+      search: Search
+      match: Match
+      table:
+        transaction: Transaction
+        account: Account
+      no_results:
+        title: No transactions found
+        description: Try a wider date range or a different amount or description.
     index:
       title: Receipts
       subtitle: Receipts waiting for their transaction. A nightly job matches them as transactions arrive.
@@ -18,12 +48,14 @@ en:
         total: Total
         source: Source
         status: Status
+        actions: Actions
       row:
         no_date: No date
         no_total: No total
         klarna: Klarna
         near_misses: Closest transactions
         matched_to: Matched to
+        review: Review receipt
       empty:
         needs_attention:
           title: Nothing needs your attention

@@ -71,21 +71,11 @@ class Receipt::Matcher
     end
 
     def attach_and_match(receipt, transaction)
-      if transaction.attachments.size >= Transaction::MAX_ATTACHMENTS_PER_TRANSACTION
-        receipt.flag_for_attention!(reason: "transaction_attachment_limit", candidates: near_miss_payload([ transaction.entry ], receipt))
-        return :needs_attention
-      end
+      outcome = receipt.attach_to!(transaction)
+      return :matched if outcome == :matched
 
-      Receipt.transaction do
-        transaction.attachments.attach(receipt.file.blob)
-        raise ActiveRecord::Rollback unless transaction.attachments_attachments.exists?(blob_id: receipt.file.blob.id)
-
-        receipt.mark_matched!(transaction)
-      end
-
-      return :matched if receipt.matched?
-
-      receipt.flag_for_attention!(reason: "attach_failed", candidates: near_miss_payload([ transaction.entry ], receipt))
+      reason = outcome == :attachment_limit ? "transaction_attachment_limit" : "attach_failed"
+      receipt.flag_for_attention!(reason: reason, candidates: near_miss_payload([ transaction.entry ], receipt))
       :needs_attention
     end
 
