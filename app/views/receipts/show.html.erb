@@ -1,0 +1,102 @@
+<%= content_for :page_title, @receipt.merchant.presence || @receipt.filename %>
+
+<div class="space-y-6 pb-6 lg:pb-12">
+  <header class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-primary"><%= @receipt.merchant.presence || @receipt.filename %></h1>
+      <div class="flex items-center gap-2 mt-2">
+        <%= receipt_status_pill(@receipt) %>
+        <% if @receipt.klarna? %>
+          <%= render DS::Pill.new(label: t("receipts.index.row.klarna"), tone: :neutral, marker: false) %>
+        <% end %>
+      </div>
+      <% if @receipt.attention_reason.present? %>
+        <p class="text-sm text-secondary mt-1"><%= receipt_reason(@receipt) %></p>
+      <% end %>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <%= render DS::Link.new(text: t(".open_file"), href: file_receipt_path(@receipt), variant: "secondary", icon: "external-link", target: "_blank") %>
+      <% if @receipt.archived? %>
+        <%= render DS::Button.new(text: t(".requeue"), href: requeue_receipt_path(@receipt), method: :patch, variant: "secondary", icon: "rotate-ccw") %>
+      <% end %>
+      <% if @receipt.open? %>
+        <%= render DS::Button.new(text: t(".dismiss"), href: dismiss_receipt_path(@receipt), method: :patch, variant: "secondary", icon: "x",
+                                  confirm: t(".dismiss_confirm")) %>
+      <% end %>
+    </div>
+  </header>
+
+  <dl class="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-container rounded-xl shadow-border-xs p-4 text-sm">
+    <div>
+      <dt class="text-xs uppercase font-medium text-secondary"><%= t("receipts.index.table.date") %></dt>
+      <dd class="text-primary"><%= @receipt.receipt_date ? format_date(@receipt.receipt_date) : t("receipts.index.row.no_date") %></dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase font-medium text-secondary"><%= t("receipts.index.table.total") %></dt>
+      <dd class="text-primary tabular-nums privacy-sensitive"><%= receipt_total(@receipt) %></dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase font-medium text-secondary"><%= t("receipts.index.table.source") %></dt>
+      <dd class="text-primary"><%= t("receipts.source.#{@receipt.source}") %></dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase font-medium text-secondary"><%= t(".file") %></dt>
+      <dd class="text-primary truncate"><%= @receipt.filename %></dd>
+    </div>
+  </dl>
+
+  <% if @receipt.matched? && @receipt.matched_transaction&.entry %>
+    <p class="text-sm text-secondary">
+      <%= t("receipts.index.row.matched_to") %>
+      <%= link_to @receipt.matched_transaction.entry.name, entry_path(@receipt.matched_transaction.entry), class: "text-primary hover:underline" %>
+    </p>
+  <% elsif @receipt.open? %>
+    <section class="space-y-3">
+      <h2 class="text-lg font-medium text-primary"><%= t(".match_title") %></h2>
+
+      <%= styled_form_with url: receipt_path(@receipt), method: :get, scope: :q, class: "grid gap-3 lg:grid-cols-[2fr_1fr_1fr_1fr_auto] lg:items-end" do |form| %>
+        <%= form.text_field :search, label: t(".search_label"), value: @finder.filters[:search] %>
+        <%= form.text_field :amount, label: t(".amount_label"), value: @finder.filters[:amount], inputmode: "decimal" %>
+        <%= form.date_field :start_date, label: t(".from_label"), value: @finder.filters[:start_date] %>
+        <%= form.date_field :end_date, label: t(".to_label"), value: @finder.filters[:end_date] %>
+        <div>
+          <%= form.submit t(".search") %>
+        </div>
+      <% end %>
+
+      <% if @transactions.any? %>
+        <div class="bg-container rounded-xl shadow-border-xs overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="text-xs uppercase font-medium text-secondary border-b border-divider">
+                <th class="px-3 py-3 text-left min-w-28"><%= t("receipts.index.table.date") %></th>
+                <th class="px-3 py-3 text-left min-w-56"><%= t(".table.transaction") %></th>
+                <th class="px-3 py-3 text-left min-w-40"><%= t(".table.account") %></th>
+                <th class="px-3 py-3 text-right min-w-28"><%= t("receipts.index.table.total") %></th>
+                <th class="px-3 py-3 text-right min-w-24"><%= t("receipts.index.table.actions") %></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @transactions.each do |transaction| %>
+                <% entry = transaction.entry %>
+                <tr id="<%= dom_id(transaction, :candidate) %>" class="border-b border-subdued hover:bg-surface-hover">
+                  <td class="px-3 py-3 text-sm text-secondary"><%= format_date(entry.date) %></td>
+                  <td class="px-3 py-3 text-sm font-medium text-primary"><%= entry.name %></td>
+                  <td class="px-3 py-3 text-sm text-secondary"><%= entry.account.name %></td>
+                  <td class="px-3 py-3 text-sm text-primary text-right tabular-nums privacy-sensitive"><%= entry.amount_money.format %></td>
+                  <td class="px-3 py-3 text-right">
+                    <%= render DS::Button.new(text: t(".match"), href: match_receipt_path(@receipt), method: :patch, variant: "secondary", size: :sm,
+                                              params: { transaction_id: transaction.id }) %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <%= render DS::EmptyState.new(icon: "search", title: t(".no_results.title"), description: t(".no_results.description")) %>
+      <% end %>
+    </section>
+  <% end %>
+</div>

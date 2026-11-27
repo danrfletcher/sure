@@ -787,8 +787,13 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :receipts, only: %i[index] do
-    get :file, on: :member
+  resources :receipts, only: %i[index show] do
+    member do
+      get :file
+      patch :match
+      patch :dismiss
+      patch :requeue
+    end
   end
 
   # Convenience routes for polymorphic paths
