@@ -874,6 +874,7 @@ Rails.application.routes.draw do
       resources :transfers, only: [ :index, :show ]
       resources :rejected_transfers, only: [ :index, :show ]
       resources :valuations, only: [ :index, :create, :update, :show ]
+      resources :receipts, only: [ :index, :show, :create ]
       resources :recurring_transactions, only: [ :index, :show, :create, :update, :destroy ]
       resources :family_exports, only: [ :index, :show, :create ] do
         get :download, on: :member
