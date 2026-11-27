@@ -1,0 +1,87 @@
+<%= content_for :page_title, t(".title") %>
+
+<div class="space-y-6 pb-6 lg:pb-12">
+  <header>
+    <h1 class="text-2xl font-semibold text-primary"><%= t(".title") %></h1>
+    <p class="text-sm text-secondary mt-1"><%= t(".subtitle") %></p>
+  </header>
+
+  <%= render DS::SegmentedControl.new(aria_label: t(".tabs_aria"), class: "overflow-x-auto max-w-full") do |sc| %>
+    <% ReceiptsController::STATUS_TABS.each do |status| %>
+      <% sc.with_segment(
+           t(".tabs.#{status}", count: @counts.fetch(status, 0)),
+           active: status == @status,
+           href: receipts_path(status: status),
+           class: "shrink-0 whitespace-nowrap",
+           data: { testid: "receipts-tab-#{status}" }
+         ) %>
+    <% end %>
+  <% end %>
+
+  <% if @receipts.any? %>
+    <div class="bg-container rounded-xl shadow-border-xs overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="text-xs uppercase font-medium text-secondary border-b border-divider">
+            <th class="px-3 py-3 text-left min-w-56"><%= t(".table.receipt") %></th>
+            <th class="px-3 py-3 text-left min-w-28"><%= t(".table.date") %></th>
+            <th class="px-3 py-3 text-right min-w-28"><%= t(".table.total") %></th>
+            <th class="px-3 py-3 text-left min-w-24"><%= t(".table.source") %></th>
+            <th class="px-3 py-3 text-left min-w-64"><%= t(".table.status") %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @receipts.each do |receipt| %>
+            <tr id="<%= dom_id(receipt) %>" class="border-b border-subdued align-top hover:bg-surface-hover">
+              <td class="px-3 py-3">
+                <%= link_to file_receipt_path(receipt), target: "_blank", rel: "noopener", class: "flex items-center gap-2 min-w-0 text-sm font-medium text-primary hover:underline" do %>
+                  <%= icon(receipt.content_type == "application/pdf" ? "file-text" : "image", size: "sm") %>
+                  <span class="truncate"><%= receipt.merchant.presence || receipt.filename %></span>
+                <% end %>
+                <p class="text-xs text-secondary"><%= receipt.filename %> &middot; <%= number_to_human_size(receipt.byte_size) %></p>
+              </td>
+              <td class="px-3 py-3 text-sm text-secondary"><%= receipt.receipt_date ? format_date(receipt.receipt_date) : t(".row.no_date") %></td>
+              <td class="px-3 py-3 text-sm text-primary text-right tabular-nums privacy-sensitive"><%= receipt_total(receipt) %></td>
+              <td class="px-3 py-3 text-sm text-secondary"><%= t("receipts.source.#{receipt.source}") %></td>
+              <td class="px-3 py-3">
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <%= receipt_status_pill(receipt) %>
+                    <% if receipt.klarna? %>
+                      <%= render DS::Pill.new(label: t(".row.klarna"), tone: :neutral, marker: false) %>
+                    <% end %>
+                  </div>
+                  <% if receipt.attention_reason.present? %>
+                    <p class="text-xs text-secondary"><%= receipt_reason(receipt) %></p>
+                  <% end %>
+                  <% if receipt.needs_attention? && receipt.candidates.any? %>
+                    <div class="text-xs text-secondary">
+                      <p class="font-medium"><%= t(".row.near_misses") %></p>
+                      <ul class="list-disc pl-4 privacy-sensitive">
+                        <% receipt.candidates.each do |candidate| %>
+                          <li><%= receipt_candidate_line(candidate) %></li>
+                        <% end %>
+                      </ul>
+                    </div>
+                  <% end %>
+                  <% if receipt.matched? && receipt.matched_transaction&.entry %>
+                    <p class="text-xs text-secondary">
+                      <%= t(".row.matched_to") %>
+                      <%= link_to receipt.matched_transaction.entry.name, entry_path(receipt.matched_transaction.entry), class: "text-primary hover:underline" %>
+                    </p>
+                  <% end %>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if @pagy.pages > 1 %>
+      <%= render "shared/pagination", pagy: @pagy %>
+    <% end %>
+  <% else %>
+    <%= render DS::EmptyState.new(icon: "file-text", title: t(".empty.#{@status}.title"), description: t(".empty.#{@status}.description")) %>
+  <% end %>
+</div>

@@ -17,6 +17,10 @@ en:
         home: Home
         plan: Plan
         portfolio: Portfolio
+        receipts: Receipts
+        receipts_badge:
+          one: 1 receipt needs a transaction
+          other: "%{count} receipts need a transaction"
         reports: Reports
         goals: Goals
         transactions: Transactions

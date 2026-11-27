@@ -125,6 +125,22 @@ module ApplicationHelper
     )
   end
 
+  # Receipts that need a person to look at them show as a count on the entry.
+  # Desktop-only for the same reason as Portfolio: the mobile bottom bar is full.
+  def receipts_nav_item
+    return nil unless Current.family && Receipt.manager?(Current.user)
+
+    {
+      name: t("layouts.application.nav.receipts"),
+      path: receipts_path,
+      icon: "file-text",
+      icon_custom: false,
+      active: page_active?(receipts_path),
+      desktop_only: true,
+      badge_count: Current.family.receipts.needs_attention.count
+    }
+  end
+
   # Budgets and Goals share one nav slot. Preview users get the "Plan" hub
   # entry fronting both (it stays lit while browsing either subpage, since
   # page_active? is a path-prefix match and /budgets · /goals don't share
