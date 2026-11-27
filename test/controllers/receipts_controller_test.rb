@@ -34,6 +34,17 @@ class ReceiptsControllerTest < ActionDispatch::IntegrationTest
     assert_select "li", text: /GADGET STORE LONDON/
   end
 
+  test "each row opens its receipt, and the file link is kept separate" do
+    receipt = create_receipt(merchant: "Gadget Store")
+    receipt.flag_for_attention!(reason: "missing_details")
+
+    get receipts_url
+
+    row = "##{ActionView::RecordIdentifier.dom_id(receipt)}"
+    assert_select "#{row} a[href=?]", receipt_path(receipt), text: /Gadget Store/
+    assert_select "#{row} a[href=?][target=_blank]", file_receipt_path(receipt)
+  end
+
   test "filter tabs show each status with counts" do
     create_receipt.flag_for_attention!(reason: "ambiguous")
     waiting = create_receipt(merchant: "Waiting Shop")

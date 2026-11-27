@@ -33,13 +33,16 @@
         </thead>
         <tbody>
           <% @receipts.each do |receipt| %>
-            <tr id="<%= dom_id(receipt) %>" class="border-b border-subdued align-top hover:bg-surface-hover">
+            <tr id="<%= dom_id(receipt) %>" class="relative border-b border-subdued align-top hover:bg-surface-hover cursor-pointer">
               <td class="px-3 py-3">
-                <%= link_to file_receipt_path(receipt), target: "_blank", rel: "noopener", class: "flex items-center gap-2 min-w-0 text-sm font-medium text-primary hover:underline" do %>
-                  <%= icon(receipt.content_type == "application/pdf" ? "file-text" : "image", size: "sm") %>
+                <%# The receipt link is stretched over the whole row, so clicking anywhere opens the receipt; the file and transaction links sit above it. %>
+                <%= link_to receipt_path(receipt), class: "flex items-center gap-2 min-w-0 text-sm font-medium text-primary hover:underline after:absolute after:inset-0 after:content-['']" do %>
                   <span class="truncate"><%= receipt.merchant.presence || receipt.filename %></span>
                 <% end %>
-                <p class="text-xs text-secondary"><%= receipt.filename %> &middot; <%= number_to_human_size(receipt.byte_size) %></p>
+                <%= link_to file_receipt_path(receipt), target: "_blank", rel: "noopener", title: t(".row.open_file"), class: "relative z-10 inline-flex items-center gap-1 text-xs text-secondary hover:text-primary hover:underline" do %>
+                  <%= icon(receipt.content_type == "application/pdf" ? "file-text" : "image", size: "xs") %>
+                  <span><%= receipt.filename %> &middot; <%= number_to_human_size(receipt.byte_size) %></span>
+                <% end %>
               </td>
               <td class="px-3 py-3 text-sm text-secondary"><%= receipt.receipt_date ? format_date(receipt.receipt_date) : t(".row.no_date") %></td>
               <td class="px-3 py-3 text-sm text-primary text-right tabular-nums privacy-sensitive"><%= receipt_total(receipt) %></td>
@@ -68,13 +71,13 @@
                   <% if receipt.matched? && receipt.matched_transaction&.entry %>
                     <p class="text-xs text-secondary">
                       <%= t(".row.matched_to") %>
-                      <%= link_to receipt.matched_transaction.entry.name, entry_path(receipt.matched_transaction.entry), class: "text-primary hover:underline" %>
+                      <%= link_to receipt.matched_transaction.entry.name, entry_path(receipt.matched_transaction.entry), class: "relative z-10 text-primary hover:underline" %>
                     </p>
                   <% end %>
                 </div>
               </td>
               <td class="px-3 py-3 text-right">
-                <%= link_to receipt_path(receipt), aria: { label: t(".row.review") }, class: "inline-flex" do %>
+                <%= link_to receipt_path(receipt), aria: { label: t(".row.review") }, class: "relative z-10 inline-flex" do %>
                   <%= icon("eye", class: "w-5 h-5 text-primary") %>
                 <% end %>
               </td>
