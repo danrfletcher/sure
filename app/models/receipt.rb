@@ -10,6 +10,10 @@ class Receipt < ApplicationRecord
 
   MAX_FILE_SIZE = Transaction::MAX_ATTACHMENT_SIZE
   READ_CHUNK_SIZE = 1.megabyte
+  # How long a receipt waits for its transaction. Klarna Credit Card lines only
+  # arrive on the monthly statement.
+  WAIT_DAYS = 14
+  KLARNA_WAIT_DAYS = 45
   ALLOWED_CONTENT_TYPES = Transaction::ALLOWED_CONTENT_TYPES
 
   belongs_to :family
@@ -88,10 +92,26 @@ class Receipt < ApplicationRecord
       )
       receipt.file.attach(io: StringIO.new(content), filename: filename, content_type: content_type)
       receipt.save!
+      receipt.archive!(reason: "older_than_wait_window") if receipt.stale_on_arrival?
       [ receipt, true ]
     rescue ActiveRecord::RecordNotUnique
       [ family.receipts.find_by!(content_sha256: sha), false ]
     end
+  end
+
+  def wait_days
+    klarna? ? KLARNA_WAIT_DAYS : WAIT_DAYS
+  end
+
+  # Last day a transaction can still turn up for this receipt.
+  def wait_deadline
+    receipt_date + wait_days if receipt_date
+  end
+
+  # Already past its wait window when first queued (e.g. a photo backlog), so
+  # the transaction would have arrived long ago; archived rather than queued.
+  def stale_on_arrival?(today = Date.current)
+    wait_deadline.present? && today > wait_deadline
   end
 
   # Waiting receipts leave the queue for "needs Dan" with a reason and the
